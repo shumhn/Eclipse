@@ -1,7 +1,7 @@
 {
-  "name": "magicblock-permissionless-prediction-market",
+  "name": "eclipse-prediction-market",
   "version": "0.1.0",
-  "description": "Permissionless private prediction market on Solana using MagicBlock / PER",
+  "description": "Eclipse — Private prediction markets on Solana using MagicBlock Ephemeral Rollups",
   "private": true,
   "scripts": {
     "build": "anchor build",
