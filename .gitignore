@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+
+# Production builds
+.next/
+out/
+dist/
+target/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# Cache
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Wallets and keys
+*.keypair
+*.json.key
+wallet/
+test-ledger
+
+# Claude
+.claude/
+AGENTS.md
+CLAUDE.md
+reference-repos/
+reference-docs/
+.vercel
+.playwright-mcp/
+DEPLOYMENT.md
+SUMMARY.md
