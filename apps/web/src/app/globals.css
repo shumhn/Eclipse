@@ -1,0 +1,191 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   BASE STYLES
+========================= */
+@layer base {
+  body {
+    background-color: #13171B;
+    color: #FFFFFF;
+    position: relative;
+    font-family: var(--font-sans);
+  }
+}
+
+/* =========================
+   UTILITIES
+========================= */
+@layer utilities {
+  .text-shadow-sm {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  .poly-card {
+    background-color: #1E2226;
+    border: 1px solid #2d3238;
+    border-radius: 8px;
+  }
+
+  .poly-button-blue {
+    background-color: #2D9CDB;
+    color: white;
+    border-radius: 6px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+  }
+
+  .poly-button-blue:hover {
+    background-color: #2482B6;
+  }
+  
+  .poly-button-green {
+    background-color: #27AE60;
+    color: white;
+    border-radius: 6px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+  }
+
+  .poly-button-green:hover {
+    background-color: #219653;
+  }
+
+  .poly-button-red {
+    background-color: #E74C3C;
+    color: white;
+    border-radius: 6px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+  }
+
+  .poly-button-red:hover {
+    background-color: #C0392B;
+  }
+}
+
+/* =========================
+   WALLET ADAPTER STYLING
+========================= */
+.wallet-adapter-button {
+  background-color: #2D9CDB !important;
+  color: white !important;
+  border-radius: 6px !important;
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  height: 40px !important;
+}
+
+.wallet-adapter-button:hover {
+  background-color: #2482B6 !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  z-index: 100000 !important;
+}
+
+.wallet-adapter-modal-container {
+  background-color: #1E2226 !important;
+  border-radius: 12px !important;
+  border: 1px solid #2d3238 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+  max-width: 400px !important;
+  width: 90% !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  color: white !important;
+}
+
+.wallet-adapter-modal-title {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  color: white !important;
+  text-align: center !important;
+  padding: 24px 24px 16px !important;
+  border-bottom: 1px solid #2d3238 !important;
+}
+
+.wallet-adapter-modal-list {
+  padding: 16px !important;
+  margin: 0 !important;
+}
+
+.wallet-adapter-modal-list li {
+  margin-bottom: 8px !important;
+}
+
+.wallet-adapter-modal-list-more {
+  color: #2D9CDB !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  padding: 12px !important;
+  border-radius: 8px !important;
+}
+
+.wallet-adapter-modal-list-more:hover {
+  background-color: #2d3238 !important;
+}
+
+/* Individual wallet buttons in modal */
+.wallet-adapter-modal-list .wallet-adapter-button {
+  background-color: #2d3238 !important;
+  color: white !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+  width: 100% !important;
+  justify-content: flex-start !important;
+  font-size: 16px !important;
+  transition: all 0.2s !important;
+}
+
+.wallet-adapter-modal-list .wallet-adapter-button:hover {
+  border-color: #2D9CDB !important;
+  background-color: #383f47 !important;
+}
+
+.wallet-adapter-modal-button-close {
+  background-color: #2d3238 !important;
+  color: white !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  height: 32px !important;
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  border: none !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.wallet-adapter-modal-button-close:hover {
+  background-color: #4a535e !important;
+}
+
+.wallet-adapter-modal-button-close svg {
+  fill: white !important;
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.wallet-adapter-collapse-button {
+  background: transparent !important;
+  color: #828B93 !important;
+  font-weight: 600 !important;
+  padding: 12px !important;
+}
+
+.wallet-adapter-button-trigger {
+  background-color: #2D9CDB !important;
+  color: white !important;
+}
