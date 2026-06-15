@@ -1,24 +1,34 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Clock, Users, ExternalLink, Shield, CheckCircle2, CircleDashed } from 'lucide-react';
-import Navbar from '@/components/Navbar';
-import TradePanel from '@/components/TradePanel';
-import ClaimPanel from '@/components/ClaimPanel';
-import ResolvePanel from '@/components/ResolvePanel';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
+  ArrowLeft,
+  Clock,
+  Users,
+  ExternalLink,
+  Shield,
+  CheckCircle2,
+  CircleDashed,
+} from "lucide-react";
+import Navbar from "@/components/Navbar";
+import TradePanel from "@/components/TradePanel";
+import ClaimPanel from "@/components/ClaimPanel";
+import ResolvePanel from "@/components/ResolvePanel";
+import PriceChart from "@/components/PriceChart";
+import MarketCountdown from "@/components/MarketCountdown";
+import { Button } from "@/components/ui/button";
+import {
+  calculatePriceFromReserves,
   fetchMarket,
   Market,
   MarketPrices,
-  calculatePriceFromReserves,
-  explorerAccountUrl,
+  formatUsdPrice,
   explorerTxUrl,
   formatTimestamp,
   getMarketTimeRemaining,
   isMarketActive,
-} from '@/lib/api';
+} from "@/lib/api";
 
 export default function MarketDetailPage() {
   const params = useParams();
@@ -32,14 +42,15 @@ export default function MarketDetailPage() {
   const loadMarket = async () => {
     if (!marketId) return;
 
-    setLoading(true);
-    setError(null);
-
     try {
       const data = await fetchMarket(marketId);
       setMarket(data);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load market');
+      // Only show error if we have no data at all
+      if (!market) {
+        setError(err instanceof Error ? err.message : "Failed to load market");
+      }
     } finally {
       setLoading(false);
     }
@@ -47,56 +58,87 @@ export default function MarketDetailPage() {
 
   useEffect(() => {
     loadMarket();
+    const timer = window.setInterval(loadMarket, 5000);
+    return () => window.clearInterval(timer);
   }, [marketId]);
 
   const positionsHidden = market?.positionsHidden ?? false;
+  const isPriceMarket = market?.account.oracle_kind === "pythPrice";
   const prices: MarketPrices = market
     ? positionsHidden
       ? { yes: 0.5, no: 0.5 }
       : calculatePriceFromReserves(
           market.account.yes_token_supply_minted,
-          market.account.no_token_supply_minted
+          market.account.no_token_supply_minted,
         )
     : { yes: 0.5, no: 0.5 };
 
   const active = market ? isMarketActive(market) : false;
-  const timeRemaining = market ? getMarketTimeRemaining(market) : '';
-  const endDate = market ? formatTimestamp(market.account.end_time) : new Date();
-  const createdDate = market ? formatTimestamp(market.account.creation_time) : new Date();
+  const timeRemaining = market ? getMarketTimeRemaining(market) : "";
+  const endDate = market
+    ? formatTimestamp(market.account.end_time)
+    : new Date();
+  const createdDate = market
+    ? formatTimestamp(market.account.creation_time)
+    : new Date();
   const tradingEnabled = market?.tradingEnabled ?? true;
-  
-  const baseLiquidity = market ? parseInt(market.account.initial_liquidity, 16) / 1_000_000 : 0;
-  const yesMinted = market && !positionsHidden ? parseInt(market.account.yes_token_supply_minted, 16) / 1_000_000 : 0;
-  const noMinted = market && !positionsHidden ? parseInt(market.account.no_token_supply_minted, 16) / 1_000_000 : 0;
+  const disabledTradeReason =
+    market?.account.resolved
+      ? 'This market is already resolved. Trading is closed.'
+      : market?.account.resolvable
+        ? 'Resolution time has passed. Trading is closed while the oracle crank settles the outcome.'
+        : undefined;
+  const targetPrice = market?.priceMarket?.targetPriceUsd ?? null;
+  const currentOraclePrice = market?.priceMarket?.currentPriceUsd ?? null;
+  const direction = market?.priceMarket?.direction ?? "above";
+  const priceRule = market?.priceMarket?.rule ?? "";
+
+  const baseLiquidity = market
+    ? parseInt(market.account.initial_liquidity, 16) / 1_000_000
+    : 0;
+  const yesMinted =
+    market && !positionsHidden
+      ? parseInt(market.account.yes_token_supply_minted, 16) / 1_000_000
+      : 0;
+  const noMinted =
+    market && !positionsHidden
+      ? parseInt(market.account.no_token_supply_minted, 16) / 1_000_000
+      : 0;
   const totalVol = baseLiquidity + yesMinted + noMinted;
 
-  const proofSteps = market ? [
-    {
-      label: 'Created on Solana',
-      complete: Boolean(market.proof?.createSignature || market.publicKey),
-      signature: market.proof?.createSignature,
-    },
-    {
-      label: 'Delegated into MagicBlock',
-      complete: Boolean(market.delegated),
-      signature: market.proof?.marketDelegationSignature || undefined,
-    },
-    {
-      label: 'Private market state initialized',
-      complete: Boolean(market.positionsHidden || market.proof?.privateStateInitializationSignature),
-      signature: market.proof?.privateStateInitializationSignature || undefined,
-    },
-    {
-      label: 'Resolved by oracle',
-      complete: Boolean(market.account.resolved),
-      signature: market.proof?.resolveSignature || undefined,
-    },
-    {
-      label: 'Committed back toward L1',
-      complete: Boolean(market.proof?.commitSignature),
-      signature: market.proof?.commitSignature || undefined,
-    },
-  ] : [];
+  const proofSteps = market
+    ? [
+        {
+          label: "Created on Solana",
+          complete: Boolean(market.proof?.createSignature || market.publicKey),
+          signature: market.proof?.createSignature,
+        },
+        {
+          label: "Delegated into MagicBlock",
+          complete: Boolean(market.delegated),
+          signature: market.proof?.marketDelegationSignature || undefined,
+        },
+        {
+          label: "Private market state initialized",
+          complete: Boolean(
+            market.positionsHidden ||
+            market.proof?.privateStateInitializationSignature,
+          ),
+          signature:
+            market.proof?.privateStateInitializationSignature || undefined,
+        },
+        {
+          label: "Resolved by oracle",
+          complete: Boolean(market.account.resolved),
+          signature: market.proof?.resolveSignature || undefined,
+        },
+        {
+          label: "Committed back toward L1",
+          complete: Boolean(market.proof?.commitSignature),
+          signature: market.proof?.commitSignature || undefined,
+        },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-eclipse-bg text-eclipse-text-main">
@@ -129,7 +171,7 @@ export default function MarketDetailPage() {
           {error && (
             <div className="bg-eclipse-red/10 border border-eclipse-red/20 rounded-lg p-6 text-center max-w-lg mx-auto">
               <p className="text-eclipse-red font-medium mb-4">{error}</p>
-              <button 
+              <button
                 onClick={loadMarket}
                 className="px-4 py-2 bg-eclipse-red/20 hover:bg-eclipse-red/30 text-eclipse-red rounded-lg transition-colors font-semibold text-sm"
               >
@@ -144,110 +186,272 @@ export default function MarketDetailPage() {
               {/* Left Column - Market Info */}
               <div className="space-y-6">
                 {/* Header Info */}
-                <div>
-                  <div className="flex items-center gap-3 mb-3 text-sm font-medium text-eclipse-text-muted">
-                    <span className="flex items-center gap-1">
-                       <img src="/eclipse-logo.svg" alt="Avatar" className="w-5 h-5 rounded-full border border-eclipse-border" />
-                       {market.account.creator.slice(0, 6)}...{market.account.creator.slice(-4)}
-                    </span>
-                    <span>•</span>
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{timeRemaining}</span>
+                {/* Polymarket-style Header Info */}
+                <div className="flex justify-between items-start mb-8">
+                  <div className="flex gap-4 items-start">
+                    {/* Asset Icon Box */}
+                    <div className="flex-shrink-0 mt-1">
+                      {market.priceMarket?.asset === "SOL/USD" ? (
+                        <div className="w-12 h-12 rounded-xl bg-[#1A1E23] border border-eclipse-border flex items-center justify-center shadow-lg">
+                          <svg
+                            className="w-7 h-7"
+                            viewBox="0 0 397 311"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z"
+                              fill="url(#sol-grad)"
+                            />
+                            <path
+                              d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z"
+                              fill="url(#sol-grad)"
+                            />
+                            <path
+                              d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"
+                              fill="url(#sol-grad)"
+                            />
+                            <defs>
+                              <linearGradient
+                                id="sol-grad"
+                                x1="0"
+                                y1="0"
+                                x2="397"
+                                y2="311"
+                                gradientUnits="userSpaceOnUse"
+                              >
+                                <stop stopColor="#00FFA3" />
+                                <stop offset="1" stopColor="#DC1FFF" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                        </div>
+                      ) : market.priceMarket?.asset === "BTC/USD" ? (
+                        <div className="w-12 h-12 rounded-xl bg-[#F7931A]/10 border border-[#F7931A]/20 flex items-center justify-center shadow-lg">
+                          <svg
+                            className="w-7 h-7"
+                            viewBox="0 0 24 24"
+                            fill="#F7931A"
+                          >
+                            <path d="M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.666 22.038-1.244 15.525.358 9.095 1.96 2.664 8.47-1.247 14.9.355c6.43 1.604 10.34 8.115 8.738 14.548v-.002zm-6.612-4.613c.24-1.59-.976-2.45-2.64-3.03l.54-2.153-1.315-.33-.525 2.107c-.345-.087-.705-.167-1.064-.25l.526-2.127-1.32-.33-.54 2.16c-.285-.067-.565-.132-.84-.2l-1.815-.45-.35 1.407s.975.225.955.236c.53.136.63.486.615.766l-1.22 4.905c-.06.15-.224.373-.59.28.013.02-.956-.24-.956-.24l-.66 1.514 1.71.426.93.242-.54 2.19 1.32.327.54-2.17c.36.1.705.19 1.05.273l-.54 2.154 1.32.33.545-2.19c2.24.427 3.93.257 4.64-1.774.57-1.637-.03-2.58-1.217-3.196.854-.193 1.5-.76 1.68-1.93h.01zm-3.01 4.22c-.404 1.64-3.157.75-4.05.53l.72-2.9c.896.23 3.757.67 3.33 2.37zm.41-4.24c-.37 1.49-2.662.735-3.405.55l.654-2.64c.744.18 3.137.524 2.75 2.084z" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-eclipse-panel border border-eclipse-border flex items-center justify-center shadow-lg">
+                          <img
+                            src="/eclipse-logo.svg"
+                            alt="Eclipse"
+                            className="w-6 h-6 opacity-80"
+                          />
+                        </div>
+                      )}
                     </div>
+
+                    {/* Title & Metadata */}
+                    <div className="flex flex-col gap-1.5">
+                      <h1 className="font-semibold text-xl md:text-2xl leading-tight text-eclipse-text-main tracking-tight">
+                        {market.account.question}
+                      </h1>
+                      <div className="flex flex-wrap items-center gap-3 text-sm font-medium text-eclipse-text-muted mt-0.5">
+                        <span className="flex items-center gap-1.5 text-eclipse-text-muted/80 text-[13px]">
+                          {formatTimestamp(
+                            market.account.end_time,
+                          ).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1.5">
+                          <img
+                            src="/eclipse-logo.svg"
+                            alt="Avatar"
+                            className="w-4 h-4 rounded-full border border-eclipse-border"
+                          />
+                          Created by {market.account.creator.slice(0, 4)}...
+                          {market.account.creator.slice(-4)}
+                        </span>
+                        <span>•</span>
+                        <span>
+                          $
+                          {totalVol.toLocaleString(undefined, {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          })}{" "}
+                          Vol.
+                        </span>
+                        {positionsHidden && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1 text-eclipse-green bg-eclipse-green/10 px-2 py-0.5 rounded text-xs">
+                              <Shield className="w-3.5 h-3.5" /> TEE Shielded
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>{" "}
+                  {/* Closes flex gap-4 items-start */}
+                  {/* Countdown Timer */}
+                  <div className="hidden lg:block mt-2">
+                    <MarketCountdown
+                      resolutionTimestamp={parseInt(
+                        market.account.end_time,
+                        16,
+                      )}
+                    />
                   </div>
+                </div>
 
-                  <h1 className="font-bold text-2xl md:text-3xl lg:text-4xl leading-tight mb-4 text-eclipse-text-main">
-                    {market.account.question}
-                  </h1>
-
-                  {/* Top Stats */}
-                  <div className="flex items-center gap-4 text-sm text-eclipse-text-muted mb-8">
-                    <span>${totalVol.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} Vol.</span>
-                    {positionsHidden && (
-                      <span className="flex items-center gap-1 text-eclipse-green bg-eclipse-green/10 px-2 py-0.5 rounded">
-                        <Shield className="w-3.5 h-3.5" /> TEE Shielded
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Price Chart / Visual Placeholder */}
-                  <div className="eclipse-card p-6 h-[300px] flex flex-col mb-8">
-                     <div className="flex justify-between items-center mb-6">
+                {/* Price Chart / Visual Placeholder */}
+                <div className="eclipse-card p-6 h-[420px] flex flex-col mb-8 relative border-none bg-[#1C1F26]">
+                  {market.account.oracle_kind === "pythPrice" &&
+                  market.priceMarket ? (
+                    <PriceChart
+                      asset={market.priceMarket.asset}
+                      targetPriceUsd={market.priceMarket.targetPriceUsd}
+                      direction={market.priceMarket.direction}
+                      resolutionTimestamp={parseInt(
+                        market.account.end_time,
+                        16,
+                      )}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center mb-6">
                         <div className="flex items-end gap-3">
-                           <span className="text-4xl font-bold text-eclipse-green">{(prices.yes * 100).toFixed(0)}¢</span>
-                           <span className="text-sm font-semibold text-eclipse-text-muted mb-1 border-b border-dashed border-eclipse-text-muted pb-0.5">Yes</span>
+                          <span className="text-4xl font-bold text-eclipse-green">
+                            {(prices.yes * 100).toFixed(0)}¢
+                          </span>
+                          <span className="text-sm font-semibold text-eclipse-text-muted mb-1 border-b border-dashed border-eclipse-text-muted pb-0.5">
+                            Yes
+                          </span>
                         </div>
                         <div className="flex gap-2">
-                           {['1H', '1D', '1W', 'ALL'].map(tf => (
-                              <button key={tf} className="px-3 py-1 rounded text-xs font-semibold text-eclipse-text-muted hover:text-eclipse-text-main hover:bg-eclipse-panel transition-colors">
-                                {tf}
-                              </button>
-                           ))}
+                          {["1H", "1D", "1W", "ALL"].map((tf) => (
+                            <button
+                              key={tf}
+                              className="px-3 py-1 rounded text-xs font-semibold text-eclipse-text-muted hover:text-eclipse-text-main hover:bg-eclipse-panel transition-colors"
+                            >
+                              {tf}
+                            </button>
+                          ))}
                         </div>
-                     </div>
-                     {/* Chart Area or Privacy Shield */}
-                     <div className="flex-1 relative flex flex-col items-center justify-center border-t border-eclipse-border/50 pt-8 mt-2">
-                       {positionsHidden ? (
-                         <>
-                           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-eclipse-green/5 via-eclipse-bg/0 to-eclipse-bg/0 pointer-events-none"></div>
-                           <Shield className="w-16 h-16 text-eclipse-green/20 mb-4" />
-                           <h3 className="text-lg font-bold text-eclipse-text-main mb-1">Price Discovery Shielded</h3>
-                           <p className="text-sm text-eclipse-text-muted max-w-sm text-center">
-                             This market is running inside a MagicBlock TEE. Live odds, positions, and volumes are completely hidden to prevent front-running.
-                           </p>
-                         </>
-                       ) : (
-                         <>
-                           <CircleDashed className="w-12 h-12 text-eclipse-text-muted/20 mb-3" />
-                           <p className="text-sm text-eclipse-text-muted">Insufficient historical data to generate chart.</p>
-                         </>
-                       )}
-                     </div>
-                  </div>
+                      </div>
+                      {/* Chart Area or Privacy Shield */}
+                      <div className="flex-1 relative flex flex-col items-center justify-center border-t border-eclipse-border/50 pt-8 mt-2">
+                        {positionsHidden ? (
+                          <>
+                            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-eclipse-green/5 via-eclipse-bg/0 to-eclipse-bg/0 pointer-events-none"></div>
+                            <Shield className="w-16 h-16 text-eclipse-green/20 mb-4" />
+                            <h3 className="text-lg font-bold text-eclipse-text-main mb-1">
+                              Price Discovery Shielded
+                            </h3>
+                            <p className="text-sm text-eclipse-text-muted max-w-sm text-center">
+                              This market is running inside a MagicBlock TEE.
+                              Live odds, positions, and volumes are completely
+                              hidden to prevent front-running.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <CircleDashed className="w-12 h-12 text-eclipse-text-muted/20 mb-3" />
+                            <p className="text-sm text-eclipse-text-muted">
+                              Insufficient historical data to generate chart.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* About Section */}
                 <div className="eclipse-card p-6">
-                  <h2 className="font-bold text-lg mb-4 border-b border-eclipse-border pb-4">About</h2>
+                  <h2 className="font-bold text-lg mb-4 border-b border-eclipse-border pb-4">
+                    About
+                  </h2>
                   <div className="space-y-4 text-sm text-eclipse-text-muted">
-                    <p>
-                      This market resolves to <strong>{market.account.resolvable ? 'Yes' : 'No'}</strong> if the specified conditions are met by the end date.
-                    </p>
+                    {isPriceMarket ? (
+                      <p>
+                        This market resolves to <strong>Yes</strong> if{" "}
+                        <strong>
+                          {market.priceMarket?.asset ?? "the asset price"}
+                        </strong>{" "}
+                        is <strong>{direction}</strong>{" "}
+                        <strong>{formatUsdPrice(targetPrice)}</strong> at the
+                        resolution timestamp. Otherwise it resolves to{" "}
+                        <strong>No</strong>.
+                      </p>
+                    ) : (
+                      <p>
+                        This market resolves according to its configured oracle
+                        outcome at the end date.
+                      </p>
+                    )}
                     {positionsHidden && (
                       <p className="text-eclipse-text-main p-3 bg-eclipse-panel rounded-lg border border-eclipse-border flex gap-2">
                         <Shield className="w-5 h-5 text-eclipse-green shrink-0 mt-0.5" />
-                        <span>This market is running inside MagicBlock's Ephemeral Rollup (TEE). Live positions and pool balances are hidden until the oracle resolves the market.</span>
+                        <span>
+                          This market is running inside MagicBlock's Ephemeral
+                          Rollup (TEE). Your live positions and pool balances
+                          are hidden until the oracle resolves the market.
+                        </span>
                       </p>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-y-4 mt-6 pt-6 border-t border-eclipse-border text-sm">
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">Created By</div>
+                      <div className="text-eclipse-text-muted mb-1">
+                        Created By
+                      </div>
                       <div className="text-eclipse-text-main font-mono text-xs flex items-center gap-2">
-                        {market.account.creator.slice(0, 6)}...{market.account.creator.slice(-4)}
-                        <a href={`https://explorer.solana.com/address/${market.account.creator}?cluster=devnet`} target="_blank" rel="noopener noreferrer">
+                        {market.account.creator.slice(0, 6)}...
+                        {market.account.creator.slice(-4)}
+                        <a
+                          href={`https://explorer.solana.com/address/${market.account.creator}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <ExternalLink className="w-3.5 h-3.5 text-eclipse-text-muted hover:text-eclipse-text-main" />
                         </a>
                       </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">Contract Address</div>
+                      <div className="text-eclipse-text-muted mb-1">
+                        Contract Address
+                      </div>
                       <div className="text-eclipse-text-main font-mono text-xs flex items-center gap-2">
-                        {market.publicKey.slice(0, 6)}...{market.publicKey.slice(-4)}
-                        <a href={`https://explorer.solana.com/address/${market.publicKey}?cluster=devnet`} target="_blank" rel="noopener noreferrer">
+                        {market.publicKey.slice(0, 6)}...
+                        {market.publicKey.slice(-4)}
+                        <a
+                          href={`https://explorer.solana.com/address/${market.publicKey}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           <ExternalLink className="w-3.5 h-3.5 text-eclipse-text-muted hover:text-eclipse-text-main" />
                         </a>
                       </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">Start Date</div>
-                      <div className="text-eclipse-text-main font-medium">{createdDate.toLocaleDateString()}</div>
+                      <div className="text-eclipse-text-muted mb-1">
+                        Start Date
+                      </div>
+                      <div className="text-eclipse-text-main font-medium">
+                        {createdDate.toLocaleDateString()}
+                      </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">End Date</div>
-                      <div className="text-eclipse-text-main font-medium">{endDate.toLocaleDateString()}</div>
+                      <div className="text-eclipse-text-muted mb-1">
+                        End Date
+                      </div>
+                      <div className="text-eclipse-text-main font-medium">
+                        {endDate.toLocaleDateString()}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -255,9 +459,12 @@ export default function MarketDetailPage() {
                 {/* Proof of Execution */}
                 {market.tracked && (
                   <div className="eclipse-card p-6">
-                    <h2 className="font-bold text-lg mb-2">Proof of Execution</h2>
+                    <h2 className="font-bold text-lg mb-2">
+                      Proof of Execution
+                    </h2>
                     <p className="text-sm text-eclipse-text-muted mb-6">
-                      Honest devnet evidence for this market&apos;s real lifecycle.
+                      Honest devnet evidence for this market&apos;s real
+                      lifecycle.
                     </p>
 
                     <div className="space-y-3">
@@ -266,8 +473,8 @@ export default function MarketDetailPage() {
                           key={step.label}
                           className={`flex items-center justify-between gap-4 rounded-lg border p-3 text-sm ${
                             step.complete
-                              ? 'border-eclipse-green/20 bg-eclipse-green/5'
-                              : 'border-eclipse-border bg-eclipse-bg'
+                              ? "border-eclipse-green/20 bg-eclipse-green/5"
+                              : "border-eclipse-border bg-eclipse-bg"
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -276,7 +483,15 @@ export default function MarketDetailPage() {
                             ) : (
                               <CircleDashed className="h-4 w-4 text-eclipse-text-muted" />
                             )}
-                            <span className={step.complete ? 'font-medium text-eclipse-text-main' : 'text-eclipse-text-muted'}>{step.label}</span>
+                            <span
+                              className={
+                                step.complete
+                                  ? "font-medium text-eclipse-text-main"
+                                  : "text-eclipse-text-muted"
+                              }
+                            >
+                              {step.label}
+                            </span>
                           </div>
 
                           {step.signature ? (
@@ -291,7 +506,7 @@ export default function MarketDetailPage() {
                             </a>
                           ) : (
                             <span className="font-medium text-eclipse-text-muted text-xs">
-                              {step.complete ? 'Verified' : 'Pending'}
+                              {step.complete ? "Verified" : "Pending"}
                             </span>
                           )}
                         </div>
@@ -305,27 +520,25 @@ export default function MarketDetailPage() {
               <div>
                 <div className="sticky top-24">
                   {market.account.resolved ? (
-                    <ClaimPanel
-                      market={market}
-                      onClaimComplete={loadMarket}
-                    />
+                    <ClaimPanel market={market} onClaimComplete={loadMarket} />
                   ) : (
                     <TradePanel
                       marketAddress={marketId}
                       prices={prices}
                       onTradeComplete={loadMarket}
                       tradingEnabled={tradingEnabled}
+                      disabledReason={disabledTradeReason}
                       positionsHidden={positionsHidden}
                     />
                   )}
-                  
+
                   {market.account.resolvable && !market.account.resolved && (
                     <ResolvePanel
                       market={market}
                       onResolveComplete={loadMarket}
                     />
                   )}
-                  
+
                   {/* No order book for AMM */}
                 </div>
               </div>
@@ -333,6 +546,34 @@ export default function MarketDetailPage() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function StatPanel({
+  label,
+  value,
+  subtext,
+  accent,
+}: {
+  label: string;
+  value: string;
+  subtext?: string;
+  accent: "green" | "amber" | "blue";
+}) {
+  const accentClasses = {
+    green: "border-eclipse-green/20 bg-eclipse-green/5 text-eclipse-green",
+    amber: "border-amber-400/20 bg-amber-400/5 text-amber-300",
+    blue: "border-sky-400/20 bg-sky-400/5 text-sky-300",
+  }[accent];
+
+  return (
+    <div className={`rounded-2xl border p-4 ${accentClasses}`}>
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/50">
+        {label}
+      </div>
+      <div className="mt-2 text-2xl font-bold text-white">{value}</div>
+      {subtext && <div className="mt-2 text-sm text-white/60">{subtext}</div>}
     </div>
   );
 }

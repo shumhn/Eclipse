@@ -28,7 +28,8 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
       );
     }
 
-    const tradingEnabled = market.delegated && !market.account.resolved;
+    const tradingEnabled =
+      market.delegated && !market.account.resolved && !market.account.resolvable;
     const mergedMarket = tracked
       ? marketTracker.mergeWithCOREMarkets([market])[0]
       : market;

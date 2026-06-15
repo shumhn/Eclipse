@@ -3,36 +3,13 @@ import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
 import { marketTracker } from '@/services/marketTracker';
 
-export async function GET() {
-  try {
-    const config = await magicblockService.getProtocolConfig();
-    const coreMarkets = await magicblockService.getAllMarkets();
-    const supportedMarkets = coreMarkets.data.filter(
-      (market) => market.account.collateral_token === config.collateralMint
-    );
-    const mergedMarkets = marketTracker.mergeWithCOREMarkets(supportedMarkets);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        count: mergedMarkets.length,
-        trackedCount: marketTracker.getStats().totalMarkets,
-        data: mergedMarkets,
-      },
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: (error as Error).message },
-      { status: 500 }
-    );
-  }
-}
-
-const createMarketSchema = z.object({
-  question: z.string().min(10, 'Question must be at least 10 characters'),
-  initialLiquidity: z.number().min(1000000, 'Minimum 1 token (1000000 units)'),
-  endTime: z.number().int().positive().optional(),
-  endTimeHours: z.number().min(1).max(8760).optional(),
+const finalizeMarketSchema = z.object({
+  marketAddress: z.string(),
+  walletAddress: z.string(),
+  createSignature: z.string(),
+  question: z.string().min(10),
+  initialLiquidity: z.number().min(1000000),
+  endTime: z.number().int().positive(),
   collateralMint: z.string().optional(),
   useCustomOracle: z.boolean().optional().default(false),
   oracleKind: z.enum(['manual', 'pythPrice']).optional().default('pythPrice'),
@@ -46,10 +23,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
+      marketAddress,
+      walletAddress,
+      createSignature,
       question,
       initialLiquidity,
-      endTime: requestedEndTime,
-      endTimeHours,
+      endTime,
       collateralMint,
       useCustomOracle,
       oracleKind,
@@ -57,36 +36,21 @@ export async function POST(req: Request) {
       targetPrice,
       priceDirection,
       oracleFeed,
-    } = createMarketSchema.parse(body);
+    } = finalizeMarketSchema.parse(body);
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const endTime = requestedEndTime ?? nowSec + (endTimeHours ?? 1) * 60 * 60;
-    if (endTime <= nowSec) {
-      return NextResponse.json(
-        { success: false, error: 'Resolution date must be in the future' },
-        { status: 400 }
-      );
-    }
-
-    const result = await magicblockService.createPrivacyMarket({
-      question,
-      endTime,
-      initialLiquidity: BigInt(initialLiquidity),
-      oracleKind,
-      oracleAsset,
-      targetPrice: BigInt(targetPrice),
-      priceDirection,
-      oracleFeed,
+    const result = await magicblockService.finalizeMarketCreation({
+      marketAddress,
+      walletAddress,
     });
 
     const trackedMarket = marketTracker.trackMarket({
-      publicKey: result.marketAddress,
+      publicKey: marketAddress,
       question,
-      creator: result.creator,
+      creator: walletAddress,
       collateralMint: collateralMint || '',
       initialLiquidity: initialLiquidity.toString(),
       endTime,
-      transactionSignature: result.signature,
+      transactionSignature: createSignature,
       isCustomOracle: useCustomOracle,
       creatorPosition: result.creatorPosition,
       marketDelegationSignature: result.delegationSignature,
@@ -97,10 +61,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        marketAddress: result.marketAddress,
-        signature: result.signature,
+        marketAddress,
+        signature: createSignature,
         question,
-        creator: result.creator,
+        creator: walletAddress,
         endTime: new Date(endTime * 1000).toISOString(),
         isCustomOracle: useCustomOracle,
         oracleKind,

@@ -7,7 +7,7 @@ const API_BASE = '';
 
 // Token mint addresses (Devnet)
 // USDC Devnet - collateral for all markets
-export const USDC_MINT = 'Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr';
+export const USDC_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
 
 export interface MarketProof {
   createdAt?: number;
@@ -30,6 +30,15 @@ export interface Market {
   settlementState?: 'delegated' | 'base';
   tracked?: boolean;
   proof?: MarketProof;
+  priceMarket?: {
+    asset: 'SOL/USD' | 'BTC/USD' | 'Unknown';
+    targetPriceUsd: number | null;
+    currentPriceUsd: number | null;
+    resolverPriceUsd: number | null;
+    direction: 'above' | 'below';
+    rule: string;
+    oracleFeed?: string;
+  };
   account: {
     id: string;
     question: string;
@@ -46,6 +55,11 @@ export interface Market {
     collateral_token: string;
     market_reserves: string;
     winning_token_id: { None: Record<string, never> } | { Some: string };
+    oracle_kind?: 'manual' | 'pythPrice';
+    price_direction?: 'above' | 'below';
+    target_price?: string;
+    oracle_feed?: string;
+    resolver_price?: string;
   };
   isV3?: boolean;           // V3 markets have proper token mints initialized
   tradingEnabled?: boolean; // True for V3 markets
@@ -55,6 +69,23 @@ export interface Market {
 export interface MarketPrices {
   yes: number;
   no: number;
+}
+
+export interface Position {
+  publicKey: string;
+  delegated: boolean;
+  market: string;
+  trader: string;
+  collateralDeposited: string;
+  collateralWithdrawn: string;
+  collateralAvailable: string;
+  yesShares: string;
+  noShares: string;
+  claimableAmount: string;
+  claimedAmount: string;
+  settled: boolean;
+  claimed: boolean;
+  bump: number;
 }
 
 export interface ApiResponse<T> {
@@ -117,6 +148,19 @@ export async function fetchMarketPrices(marketId: string): Promise<MarketPrices>
   return json.data?.prices || { yes: 0.5, no: 0.5 };
 }
 
+export async function fetchPosition(params: {
+  marketAddress: string;
+  walletAddress: string;
+}): Promise<Position | null> {
+  const searchParams = new URLSearchParams({
+    market: params.marketAddress,
+    walletAddress: params.walletAddress,
+  });
+  const res = await fetch(`${API_BASE}/api/positions?${searchParams.toString()}`);
+  const json = await parseApiResponse<Position | null>(res, 'Failed to fetch position');
+  return json.data || null;
+}
+
 // Trading API
 export interface TradeResult {
   signature: string | null;
@@ -144,9 +188,15 @@ export async function executeTrade(params: {
 export interface CreateMarketParams {
   question: string;
   initialLiquidity: number;
-  endTimeHours: number;
+  endTime: number;
+  endTimeHours?: number;
   collateralMint?: string;
   useCustomOracle?: boolean;
+  oracleKind?: 'manual' | 'pythPrice';
+  oracleAsset?: 'SOLUSD' | 'BTCUSD';
+  targetPrice?: string;
+  priceDirection?: 'above' | 'below';
+  oracleFeed?: string;
 }
 
 export interface CreateMarketResult {
@@ -156,6 +206,11 @@ export interface CreateMarketResult {
   creator: string;
   endTime: string;
   isCustomOracle: boolean;
+  oracleKind?: 'manual' | 'pythPrice';
+  oracleAsset?: 'SOLUSD' | 'BTCUSD';
+  priceDirection?: 'above' | 'below';
+  targetPrice?: string;
+  oracleFeed?: string;
   delegated?: boolean;
   delegationSignature?: string | null;
   creatorPositionDelegationSignature?: string | null;
@@ -183,6 +238,17 @@ export interface CreateMarketResult {
   };
 }
 
+export interface PreparedCreateMarket {
+  transaction: string;
+  sendTo: 'base';
+  marketAddress: string;
+  creatorPosition: string;
+  creatorPrivatePosition: string;
+  vault: string;
+  collateralMint: string;
+  marketId: number;
+}
+
 export async function createMarket(params: CreateMarketParams): Promise<CreateMarketResult> {
   const res = await fetch(`${API_BASE}/api/markets/create`, {
     method: 'POST',
@@ -190,6 +256,34 @@ export async function createMarket(params: CreateMarketParams): Promise<CreateMa
     body: JSON.stringify(params),
   });
   const json = await parseApiResponse<CreateMarketResult>(res, 'Failed to create market');
+  return json.data!;
+}
+
+export async function prepareCreateMarket(
+  params: CreateMarketParams & { walletAddress: string }
+): Promise<PreparedCreateMarket> {
+  const res = await fetch(`${API_BASE}/api/markets/prepare-create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const json = await parseApiResponse<PreparedCreateMarket>(res, 'Failed to prepare market creation');
+  return json.data!;
+}
+
+export async function finalizeCreateMarket(
+  params: CreateMarketParams & {
+    walletAddress: string;
+    marketAddress: string;
+    createSignature: string;
+  }
+): Promise<CreateMarketResult> {
+  const res = await fetch(`${API_BASE}/api/markets/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const json = await parseApiResponse<CreateMarketResult>(res, 'Failed to finalize market creation');
   return json.data!;
 }
 
@@ -280,4 +374,9 @@ export function getMarketTimeRemaining(market: Market): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h`;
   return 'Ending soon';
+}
+
+export function formatUsdPrice(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--';
+  return `$${value.toLocaleString(undefined, { maximumFractionDigits: value >= 1000 ? 0 : 2 })}`;
 }
