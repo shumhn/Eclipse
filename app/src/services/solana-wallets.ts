@@ -45,12 +45,20 @@ function dedupeKeypairs(keypairs: LoadedKeypair[]): LoadedKeypair[] {
 
 export function getCandidateKeypairs(): LoadedKeypair[] {
   const localKeypairPath = path.join(os.homedir(), '.config', 'solana', 'id.json');
+  const payrollAuthorityPath = path.join(
+    os.homedir(),
+    'Desktop',
+    'Homie',
+    'keys',
+    'payroll-authority.json'
+  );
 
   return dedupeKeypairs(
     [
       loadKeypairFromEnv('SOLANA_PRIVATE_KEY'),
       loadKeypairFromEnv('SOLANA_ADMIN_PRIVATE_KEY'),
       loadKeypairFromEnv('SOLANA_ORACLE_PRIVATE_KEY'),
+      loadKeypairFromFile(payrollAuthorityPath, `file:${payrollAuthorityPath}`),
       loadKeypairFromFile(localKeypairPath, `file:${localKeypairPath}`),
     ].filter(Boolean) as LoadedKeypair[]
   );
