@@ -781,6 +781,352 @@ export type PredictionMarket = {
       "args": []
     },
     {
+      "name": "createPriceMarket",
+      "docs": [
+        "Create a private prediction market resolved by a MagicBlock Pyth Lazer",
+        "price feed inside the Ephemeral Rollup.",
+        "",
+        "YES means the configured price condition is true at resolution time."
+      ],
+      "discriminator": [
+        159,
+        239,
+        245,
+        173,
+        78,
+        104,
+        2,
+        248
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "Permissionless market creator."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global protocol config."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Public market shell.",
+            "",
+            "PDA:",
+            "seeds = [\"market\", config.market_count.to_le_bytes()]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "config.market_count",
+                "account": "config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creatorPosition",
+          "docs": [
+            "Creator's public position shell.",
+            "",
+            "PDA:",
+            "seeds = [\"position\", market.key(), creator.key()]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creatorPrivatePosition",
+          "docs": [
+            "Creator's private position state PDA.",
+            "",
+            "Created on L1, then delegated into MagicBlock before private execution."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateralMint",
+          "docs": [
+            "Protocol collateral mint."
+          ]
+        },
+        {
+          "name": "creatorCollateral",
+          "docs": [
+            "Creator's collateral token account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "tokenProgram"
+              },
+              {
+                "kind": "account",
+                "path": "collateralMint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Market vault.",
+            "",
+            "ATA:",
+            "mint = collateral_mint",
+            "authority = market PDA",
+            "",
+            "This vault holds real collateral on Solana L1."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "tokenProgram"
+              },
+              {
+                "kind": "account",
+                "path": "collateralMint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "tokenProgram",
+          "docs": [
+            "Token program."
+          ]
+        },
+        {
+          "name": "associatedTokenProgram",
+          "docs": [
+            "Associated token program."
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "systemProgram",
+          "docs": [
+            "System program."
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "question",
+          "type": "string"
+        },
+        {
+          "name": "endTime",
+          "type": "u64"
+        },
+        {
+          "name": "initialLiquidity",
+          "type": "u64"
+        },
+        {
+          "name": "targetPrice",
+          "type": "i64"
+        },
+        {
+          "name": "priceDirection",
+          "type": {
+            "defined": {
+              "name": "priceDirection"
+            }
+          }
+        },
+        {
+          "name": "oracleFeed",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "createPrivateMarket",
       "docs": [
         "Create a permissionless private prediction market.",
@@ -885,6 +1231,54 @@ export type PredictionMarket = {
                   105,
                   111,
                   110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creatorPrivatePosition",
+          "docs": [
+            "Creator's private position state PDA.",
+            "",
+            "Created on L1, then delegated into MagicBlock before private execution."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -1065,6 +1459,64 @@ export type PredictionMarket = {
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "createPrivatePositionPermission",
+      "docs": [
+        "Create a MagicBlock permission PDA for a private position state account."
+      ],
+      "discriminator": [
+        16,
+        207,
+        212,
+        70,
+        59,
+        0,
+        187,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "writable": true
+        },
+        {
+          "name": "permission",
+          "writable": true
+        },
+        {
+          "name": "permissionProgram",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "delegateMarketIntoTee",
@@ -1491,6 +1943,215 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "delegatePrivatePositionIntoTee",
+      "docs": [
+        "Delegate private position state into MagicBlock / PER."
+      ],
+      "discriminator": [
+        65,
+        50,
+        93,
+        96,
+        204,
+        196,
+        168,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Trader/admin delegating the private position."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bufferPrivatePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "privatePosition"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                91,
+                78,
+                92,
+                116,
+                122,
+                200,
+                255,
+                148,
+                184,
+                56,
+                0,
+                182,
+                188,
+                113,
+                85,
+                98,
+                165,
+                251,
+                167,
+                30,
+                59,
+                249,
+                151,
+                85,
+                192,
+                227,
+                101,
+                25,
+                4,
+                144,
+                255,
+                123
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordPrivatePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "privatePosition"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataPrivatePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "privatePosition"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "privatePosition",
+          "docs": [
+            "Private position state to delegate.",
+            "",
+            "Serialized manually and validated before delegation."
+          ],
+          "writable": true
+        },
+        {
+          "name": "ownerProgram",
+          "address": "79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market",
+          "type": "pubkey"
+        },
+        {
+          "name": "trader",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "depositCollateral",
       "docs": [
         "Deposit collateral into the market L1 vault.",
@@ -1540,9 +2201,11 @@ export type PredictionMarket = {
         {
           "name": "market",
           "docs": [
-            "Market shell."
-          ],
-          "writable": true
+            "Market shell.",
+            "",
+            "Fresh traders may deposit after the market shell has been delegated.",
+            "Treat it as read-only account data and validate fields in the handler."
+          ]
         },
         {
           "name": "position",
@@ -1563,6 +2226,52 @@ export type PredictionMarket = {
                   105,
                   111,
                   110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "docs": [
+            "Trader private position state PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -1647,60 +2356,7 @@ export type PredictionMarket = {
           "docs": [
             "Market vault."
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "market"
-              },
-              {
-                "kind": "account",
-                "path": "tokenProgram"
-              },
-              {
-                "kind": "account",
-                "path": "collateralMint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "tokenProgram",
@@ -1834,9 +2490,9 @@ export type PredictionMarket = {
       ],
       "accounts": [
         {
-          "name": "creator",
+          "name": "initializer",
           "docs": [
-            "Market creator."
+            "Creator or protocol admin finalizing the private market state."
           ],
           "writable": true,
           "signer": true
@@ -1868,18 +2524,37 @@ export type PredictionMarket = {
             "Public market shell.",
             "",
             "This sponsors/anchors the ER private market state."
-          ]
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
         },
         {
           "name": "creatorPosition",
           "docs": [
             "Creator public position shell.",
             "",
-            "This delegated PDA is the single sponsor for both ER-only accounts",
-            "created during private market initialization.",
+            "This delegated PDA validates the creator's escrowed L1 position.",
             "",
-            "This is a delegated sponsor shell. We deserialize and validate it",
-            "manually to avoid Anchor write-back on exit."
+            "This delegated shell is deserialized manually to avoid Anchor write-back",
+            "on exit."
           ],
           "pda": {
             "seeds": [
@@ -1902,49 +2577,8 @@ export type PredictionMarket = {
               },
               {
                 "kind": "account",
-                "path": "creator"
-              }
-            ]
-          }
-        },
-        {
-          "name": "marketState",
-          "docs": [
-            "ER/PER-only live market state.",
-            "",
-            "Created and serialized manually inside MagicBlock / PER."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  105,
-                  118,
-                  97,
-                  116,
-                  101,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
+                "path": "market.creator",
+                "account": "market"
               }
             ]
           }
@@ -1952,11 +2586,10 @@ export type PredictionMarket = {
         {
           "name": "privatePosition",
           "docs": [
-            "ER/PER-only creator live position state.",
+            "Delegated creator live position state.",
             "",
-            "Created and serialized manually inside MagicBlock / PER."
+            "Created on L1, delegated into MagicBlock, then loaded manually."
           ],
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1992,19 +2625,11 @@ export type PredictionMarket = {
               },
               {
                 "kind": "account",
-                "path": "creator"
+                "path": "market.creator",
+                "account": "market"
               }
             ]
           }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "address": "MagicVau1t999999999999999999999999999999999"
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -2087,8 +2712,8 @@ export type PredictionMarket = {
           "docs": [
             "Trader public position shell.",
             "",
-            "This is a delegated sponsor shell. We deserialize and validate it",
-            "manually to avoid Anchor write-back on exit."
+            "This delegated shell is deserialized manually to avoid Anchor write-back",
+            "on exit."
           ],
           "pda": {
             "seeds": [
@@ -2117,55 +2742,12 @@ export type PredictionMarket = {
           }
         },
         {
-          "name": "marketState",
-          "docs": [
-            "Existing ER/PER-only market state.",
-            "",
-            "Loaded and validated manually."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  105,
-                  118,
-                  97,
-                  116,
-                  101,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
-              }
-            ]
-          }
-        },
-        {
           "name": "privatePosition",
           "docs": [
-            "ER/PER-only trader private position state.",
+            "Delegated trader private position state.",
             "",
-            "Created and serialized manually."
+            "Created on L1, delegated into MagicBlock, then loaded manually."
           ],
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2205,15 +2787,6 @@ export type PredictionMarket = {
               }
             ]
           }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "address": "MagicVau1t999999999999999999999999999999999"
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
         }
       ],
       "args": []
@@ -2268,7 +2841,10 @@ export type PredictionMarket = {
         {
           "name": "market",
           "docs": [
-            "Market shell."
+            "Market shell.",
+            "",
+            "This may already be delegated to MagicBlock, so it must be loaded",
+            "manually instead of through Anchor's owner-checked Account<Market>."
           ]
         },
         {
@@ -2290,6 +2866,52 @@ export type PredictionMarket = {
                   105,
                   111,
                   110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "docs": [
+            "Trader private position state PDA."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
                 ]
               },
               {
@@ -2357,6 +2979,7 @@ export type PredictionMarket = {
         },
         {
           "name": "market",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2380,7 +3003,10 @@ export type PredictionMarket = {
         },
         {
           "name": "position",
-          "writable": true,
+          "docs": [
+            "Delegated public position shell used only for validation. Live hidden",
+            "exposure lives in the private position account."
+          ],
           "pda": {
             "seeds": [
               {
@@ -2403,46 +3029,6 @@ export type PredictionMarket = {
               {
                 "kind": "account",
                 "path": "trader"
-              }
-            ]
-          }
-        },
-        {
-          "name": "marketState",
-          "docs": [
-            "Loaded/stored manually by handler."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  105,
-                  118,
-                  97,
-                  116,
-                  101,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
               }
             ]
           }
@@ -2494,13 +3080,13 @@ export type PredictionMarket = {
           }
         },
         {
-          "name": "vault",
-          "writable": true,
-          "address": "MagicVau1t999999999999999999999999999999999"
-        },
-        {
           "name": "magicProgram",
           "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": [
@@ -2550,6 +3136,97 @@ export type PredictionMarket = {
           }
         }
       ]
+    },
+    {
+      "name": "resolvePriceMarketEr",
+      "docs": [
+        "Resolve a MagicBlock/Pyth price market inside ER/PER."
+      ],
+      "discriminator": [
+        143,
+        5,
+        190,
+        144,
+        194,
+        240,
+        113,
+        119
+      ],
+      "accounts": [
+        {
+          "name": "resolver",
+          "docs": [
+            "Keeper / resolver paying for the ER transaction."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Public market shell."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracleFeed",
+          "docs": [
+            "MagicBlock Pyth Lazer price feed account.",
+            ""
+          ]
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "resolvePrivateMarketEr",
@@ -2627,55 +3304,13 @@ export type PredictionMarket = {
           }
         },
         {
-          "name": "marketState",
-          "docs": [
-            "ER/PER-only market state.",
-            "",
-            "Loaded/stored manually."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  105,
-                  118,
-                  97,
-                  116,
-                  101,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "address": "MagicVau1t999999999999999999999999999999999"
-        },
-        {
           "name": "magicProgram",
           "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": [
@@ -2740,6 +3375,176 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "settlePrivatePositionByKeeperEr",
+      "docs": [
+        "Keeper/admin path to settle a private position after market resolution.",
+        "",
+        "This gives the off-chain scheduler an Epoch-style last-mile path:",
+        "resolve expired price markets, settle trader positions, then users only",
+        "need the final L1 claim when claimable_amount is available."
+      ],
+      "discriminator": [
+        129,
+        211,
+        254,
+        97,
+        138,
+        178,
+        100,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "docs": [
+            "Protocol admin or oracle/keeper."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Public market shell."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Public position shell for the trader being settled."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "position.trader",
+                "account": "traderPosition"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "docs": [
+            "ER/PER-only trader private position state.",
+            "",
+            "Loaded/stored manually."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "position.trader",
+                "account": "traderPosition"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
       "name": "settlePrivatePositionEr",
       "docs": [
         "Settle a private position after market resolution.",
@@ -2797,7 +3602,6 @@ export type PredictionMarket = {
           "docs": [
             "Public market shell."
           ],
-          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -2852,48 +3656,6 @@ export type PredictionMarket = {
           }
         },
         {
-          "name": "marketState",
-          "docs": [
-            "ER/PER-only market state.",
-            "",
-            "Loaded manually."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  105,
-                  118,
-                  97,
-                  116,
-                  101,
-                  95,
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market"
-              }
-            ]
-          }
-        },
-        {
           "name": "privatePosition",
           "docs": [
             "ER/PER-only trader private position state.",
@@ -2942,17 +3704,72 @@ export type PredictionMarket = {
           }
         },
         {
-          "name": "vault",
-          "writable": true,
-          "address": "MagicVau1t999999999999999999999999999999999"
-        },
-        {
           "name": "magicProgram",
           "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
         }
       ],
       "args": [],
       "returns": "u64"
+    },
+    {
+      "name": "updateCollateralMint",
+      "docs": [
+        "Update the protocol collateral mint used by newly created markets."
+      ],
+      "discriminator": [
+        191,
+        190,
+        143,
+        38,
+        133,
+        195,
+        254,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Protocol admin."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateralMint",
+          "docs": [
+            "New collateral mint used by future markets."
+          ]
+        }
+      ],
+      "args": []
     },
     {
       "name": "updateOracle",
@@ -3114,8 +3931,7 @@ export type PredictionMarket = {
           "name": "market",
           "docs": [
             "Market shell."
-          ],
-          "writable": true
+          ]
         },
         {
           "name": "position",
@@ -3360,6 +4176,19 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "collateralMintUpdated",
+      "discriminator": [
+        23,
+        150,
+        96,
+        105,
+        211,
+        200,
+        250,
+        240
+      ]
+    },
+    {
       "name": "collateralWithdrawn",
       "discriminator": [
         51,
@@ -3487,6 +4316,19 @@ export type PredictionMarket = {
         95,
         132,
         131
+      ]
+    },
+    {
+      "name": "privatePositionDelegated",
+      "discriminator": [
+        14,
+        184,
+        184,
+        126,
+        229,
+        134,
+        88,
+        2
       ]
     },
     {
@@ -3696,6 +4538,29 @@ export type PredictionMarket = {
       }
     },
     {
+      "name": "collateralMintUpdated",
+      "docs": [
+        "Event emitted when the protocol collateral mint changes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "oldCollateralMint",
+            "type": "pubkey"
+          },
+          {
+            "name": "newCollateralMint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "collateralWithdrawn",
       "docs": [
         "Event emitted when idle L1 collateral is withdrawn before PER activation."
@@ -3842,27 +4707,8 @@ export type PredictionMarket = {
       "docs": [
         "Public market shell.",
         "",
-        "Important:",
-        "This account is NOT the live trading state.",
-        "",
-        "For the MagicBlock / PER-first architecture:",
-        "",
-        "Solana L1 stores:",
-        "- market identity",
-        "- creator",
-        "- question",
-        "- end time",
-        "- collateral mint",
-        "- vault address",
-        "- public lifecycle status",
-        "- final outcome",
-        "- final settlement aggregates",
-        "",
-        "MagicBlock / PER stores:",
-        "- live reserves",
-        "- live YES/NO virtual shares",
-        "- private trader positions",
-        "- active trading state",
+        "During active delegated trading, this shell is the live ER market aggregate.",
+        "It is only committed back to Solana L1 at resolution / settlement time.",
         "",
         "PDA:",
         "seeds = [\"market\", market_id.to_le_bytes()]"
@@ -3929,10 +4775,28 @@ export type PredictionMarket = {
           {
             "name": "totalDeposited",
             "docs": [
-              "Total collateral deposited into this market's vault.",
-              "",
-              "This is public aggregate accounting only.",
-              "Individual private positions live in MagicBlock / PER state."
+              "Total collateral deposited into this market's vault."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "liveReserves",
+            "docs": [
+              "Live collateral reserves while the market runs inside the ER."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "liveYesSupply",
+            "docs": [
+              "Live aggregate YES exposure while trading stays inside the ER."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "liveNoSupply",
+            "docs": [
+              "Live aggregate NO exposure while trading stays inside the ER."
             ],
             "type": "u64"
           },
@@ -3982,6 +4846,52 @@ export type PredictionMarket = {
                 "name": "outcome"
               }
             }
+          },
+          {
+            "name": "oracleKind",
+            "docs": [
+              "Resolution source for this market."
+            ],
+            "type": {
+              "defined": {
+                "name": "marketOracleKind"
+              }
+            }
+          },
+          {
+            "name": "priceDirection",
+            "docs": [
+              "Price condition direction when oracle_kind is PythPrice."
+            ],
+            "type": {
+              "defined": {
+                "name": "priceDirection"
+              }
+            }
+          },
+          {
+            "name": "targetPrice",
+            "docs": [
+              "Target price in the oracle feed's raw integer units.",
+              "",
+              "For MagicBlock Pyth Lazer feeds, this uses the raw i64 price read from",
+              "the feed account. The UI/crank should scale display values per feed."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "oracleFeed",
+            "docs": [
+              "MagicBlock oracle feed account for price-resolved markets."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "resolverPrice",
+            "docs": [
+              "Price observed at resolution. Zero for manual markets until resolved."
+            ],
+            "type": "i64"
           },
           {
             "name": "bump",
@@ -4055,6 +4965,23 @@ export type PredictionMarket = {
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "marketOracleKind",
+      "docs": [
+        "Market resolution source."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "manual"
+          },
+          {
+            "name": "pythPrice"
           }
         ]
       }
@@ -4236,6 +5163,23 @@ export type PredictionMarket = {
       }
     },
     {
+      "name": "priceDirection",
+      "docs": [
+        "Price condition direction."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "above"
+          },
+          {
+            "name": "below"
+          }
+        ]
+      }
+    },
+    {
       "name": "privateMarketCreated",
       "docs": [
         "Event emitted when a new private prediction market is created.",
@@ -4284,6 +5228,30 @@ export type PredictionMarket = {
             "type": "pubkey"
           },
           {
+            "name": "oracleKind",
+            "type": {
+              "defined": {
+                "name": "marketOracleKind"
+              }
+            }
+          },
+          {
+            "name": "priceDirection",
+            "type": {
+              "defined": {
+                "name": "priceDirection"
+              }
+            }
+          },
+          {
+            "name": "targetPrice",
+            "type": "i64"
+          },
+          {
+            "name": "oracleFeed",
+            "type": "pubkey"
+          },
+          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -4327,6 +5295,10 @@ export type PredictionMarket = {
             "type": "u64"
           },
           {
+            "name": "resolverPrice",
+            "type": "i64"
+          },
+          {
             "name": "timestamp",
             "type": "i64"
           }
@@ -4368,6 +5340,41 @@ export type PredictionMarket = {
           {
             "name": "noSupply",
             "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "privatePositionDelegated",
+      "docs": [
+        "Event emitted when a private position state account is delegated."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "privatePosition",
+            "type": "pubkey"
+          },
+          {
+            "name": "teeValidator",
+            "type": "pubkey"
           },
           {
             "name": "timestamp",

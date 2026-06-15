@@ -1,5 +1,6 @@
 export {
   fetchTeeAuthToken,
+  getOrFetchTeeAuthToken,
   getBaseBalance,
   getPrivateBalance,
   deposit,

@@ -8,6 +8,8 @@
     "test": "anchor test",
     "test:skip-local": "anchor test --skip-local-validator",
     "deploy:devnet": "anchor deploy --provider.cluster devnet",
+    "crank:price": "node scripts/price-market-crank.js",
+    "crank:price:once": "node scripts/price-market-crank.js --once",
     "keys:sync": "anchor keys sync",
     "clean": "rm -rf target .anchor node_modules/.cache"
   },

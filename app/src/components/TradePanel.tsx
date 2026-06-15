@@ -6,18 +6,21 @@ import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
 import { Settings, CheckCircle, Shield, Briefcase, ExternalLink } from 'lucide-react';
 import { MarketPrices } from '@/lib/api';
 import {
+  getOrFetchTeeAuthToken,
   delegatePrivatePosition,
   preparePositionTransaction,
   preparePrivateTradeTransaction,
   prepareTradeTransaction,
 } from '@/lib/trading';
 import { signAndSend } from '@/lib/magicblock';
+import { PublicKey } from '@solana/web3.js';
 
 interface TradePanelProps {
   marketAddress: string;
   prices: MarketPrices;
   onTradeComplete?: () => void;
   tradingEnabled?: boolean;
+  disabledReason?: string;
   positionsHidden?: boolean;
 }
 
@@ -26,6 +29,7 @@ export default function TradePanel({
   prices,
   onTradeComplete,
   tradingEnabled = true,
+  disabledReason,
   positionsHidden = false,
 }: TradePanelProps) {
   const { isConnected } = usePhantom();
@@ -43,11 +47,15 @@ export default function TradePanel({
   const walletAddress = solanaAccount?.address || '';
 
   const formatTradeError = (message: string) => {
+    if (message.includes('Missing token query param')) {
+      return 'MagicBlock TEE auth was missing for this private transaction. Please approve the wallet message prompt and try again.';
+    }
+
     if (
       message.includes('AccountOwnedByWrongProgram') ||
       message.includes('The given account is owned by a different program than expected')
     ) {
-      return 'This market is already delegated into MagicBlock. A fresh wallet cannot open its first position on this delegated market yet, so read/proof flows work but first-time trading is still blocked.';
+      return 'The wallet is still hitting the old delegated-account path. Refresh the app and try again; if it persists, the client or on-chain IDL is stale.';
     }
 
     if (message.includes('Private market state is not initialized in MagicBlock yet')) {
@@ -59,6 +67,22 @@ export default function TradePanel({
     }
 
     return message;
+  };
+
+  const getTeeToken = async () => {
+    if (!walletAddress) {
+      throw new Error('Wallet not connected');
+    }
+
+    const signer = (window as any).phantom?.solana;
+    if (!signer?.signMessage) {
+      throw new Error('Wallet cannot sign MagicBlock auth message');
+    }
+
+    return getOrFetchTeeAuthToken(
+      new PublicKey(walletAddress),
+      async (msg: Uint8Array) => (await signer.signMessage(msg, 'utf8')).signature,
+    );
   };
 
   const handleTrade = async () => {
@@ -79,6 +103,7 @@ export default function TradePanel({
 
     try {
       let signature: string;
+      const teeToken = positionsHidden ? await getTeeToken() : undefined;
 
       if (positionsHidden) {
         const setup = await preparePositionTransaction({
@@ -107,7 +132,7 @@ export default function TradePanel({
         signature = await signAndSend(
           prepared.transaction,
           (tx) => phantom.signTransaction(tx),
-          { sendTo: 'ephemeral' }
+          { sendTo: 'ephemeral', ephemeralToken: teeToken }
         );
       } else {
         const prepared = await prepareTradeTransaction({
@@ -120,7 +145,7 @@ export default function TradePanel({
         signature = await signAndSend(
           prepared.transaction,
           (tx) => phantom.signTransaction(tx),
-          { sendTo: 'ephemeral' }
+          { sendTo: 'ephemeral', ephemeralToken: teeToken }
         );
       }
 
@@ -146,7 +171,7 @@ export default function TradePanel({
         <div className="text-center py-8">
           <h3 className="font-bold text-lg mb-2 text-eclipse-text-main">Trading Disabled</h3>
           <p className="text-eclipse-text-muted text-sm mb-4">
-            This market does not support trading yet.
+            {disabledReason ?? 'This market does not support trading yet.'}
           </p>
         </div>
       </div>
@@ -208,9 +233,19 @@ export default function TradePanel({
 
         {/* Amount Input */}
         <div className="mb-6 relative group">
-          <div className="flex justify-between text-sm mb-2">
+          <div className="flex justify-between items-center text-sm mb-2">
             <span className="text-eclipse-text-muted font-medium">Amount</span>
-            <span className="text-eclipse-text-muted font-medium">USDC</span>
+            <div className="flex items-center gap-3">
+              <a 
+                href="https://spl-token-faucet.com/?token-name=USDC-Dev" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-eclipse-blue hover:underline flex items-center gap-1"
+              >
+                Get Devnet USDC <ExternalLink className="w-3 h-3" />
+              </a>
+              <span className="text-eclipse-text-muted font-medium">USDC</span>
+            </div>
           </div>
           <div className="relative bg-[#1A1D21] border border-eclipse-border rounded-lg p-1 group-focus-within:border-eclipse-text-muted transition-colors">
             <div className="flex items-center h-14 px-3">

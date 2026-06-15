@@ -132,7 +132,7 @@ const faqs: FAQItem[] = [
         </p>
         <p className="mt-2">
           <strong>Devnet USDC:</strong> You can get test USDC from various Devnet faucets. The
-          USDC mint address on Devnet is: <code className="bg-slate-100 px-1 rounded text-xs">Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr</code>
+          USDC mint address used by this app is: <code className="bg-slate-100 px-1 rounded text-xs">4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU</code>
         </p>
       </>
     ),

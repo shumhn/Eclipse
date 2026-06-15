@@ -14,6 +14,7 @@ export default function ResolvePanel({ market, onResolveComplete }: ResolvePanel
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const isPriceMarket = market.account.oracle_kind === 'pythPrice';
 
   if (market.account.resolved) {
     return null;
@@ -43,11 +44,15 @@ export default function ResolvePanel({ market, onResolveComplete }: ResolvePanel
     <div className="eclipse-card p-6 border-eclipse-blue/50 bg-eclipse-blue/5 mt-6">
       <div className="flex items-center gap-2 mb-4">
         <ShieldAlert className="w-5 h-5 text-eclipse-blue" />
-        <h3 className="font-bold text-lg text-eclipse-text-main">Creator / Admin Controls</h3>
+        <h3 className="font-bold text-lg text-eclipse-text-main">
+          {isPriceMarket ? 'Oracle Settlement' : 'Creator / Admin Controls'}
+        </h3>
       </div>
       
       <p className="text-sm text-eclipse-text-muted mb-4">
-        As an admin or oracle, you can resolve this market. This will finalize the outcome in the TEE and commit the result back to Solana L1.
+        {isPriceMarket
+          ? 'This price market resolves automatically after expiry. A crank watches MagicBlock/Pyth markets, reads the oracle price, and commits the final outcome back to Solana L1.'
+          : 'As an admin or oracle, you can resolve this market. This will finalize the outcome in the TEE and commit the result back to Solana L1.'}
       </p>
 
       {error && (
@@ -60,6 +65,12 @@ export default function ResolvePanel({ market, onResolveComplete }: ResolvePanel
         <div className="flex items-center gap-2 text-eclipse-green p-3 bg-eclipse-green/10 rounded-lg">
           <CheckCircle className="w-5 h-5" />
           <span className="font-semibold text-sm">Market successfully resolved!</span>
+        </div>
+      ) : isPriceMarket ? (
+        <div className="rounded-lg border border-eclipse-border bg-[#14181C] p-4 text-sm text-eclipse-text-muted">
+          {market.account.resolvable
+            ? 'This market has reached its resolution time and is ready for the crank to settle it automatically.'
+            : 'This market will auto-settle from the oracle once the resolution timestamp is reached.'}
         </div>
       ) : (
         <div className="flex gap-3">

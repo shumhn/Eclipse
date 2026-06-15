@@ -11,6 +11,7 @@ interface MarketCardProps {
 
 export default function MarketCard({ market, isTracked = false }: MarketCardProps) {
   const positionsHidden = market.positionsHidden ?? false;
+  const isPriceMarket = market.account.oracle_kind === 'pythPrice';
   const prices = positionsHidden
     ? { yes: 0.5, no: 0.5 }
     : calculatePriceFromReserves(
@@ -25,6 +26,10 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
   const yesMinted = positionsHidden ? 0 : parseInt(market.account.yes_token_supply_minted, 16) / 1_000_000;
   const noMinted = positionsHidden ? 0 : parseInt(market.account.no_token_supply_minted, 16) / 1_000_000;
   const totalVol = baseLiquidity + yesMinted + noMinted;
+  const categoryLabel = isPriceMarket ? 'Crypto' : 'Politics';
+  const targetLabel = market.priceMarket?.targetPriceUsd != null
+    ? `$${market.priceMarket.targetPriceUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+    : null;
   
   return (
     <Link href={`/markets/${market.publicKey}`} className="block h-full group">
@@ -37,7 +42,7 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
         {/* Category & Status */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2 text-xs font-medium text-eclipse-text-muted">
-            <span>Politics</span>
+            <span>{categoryLabel}</span>
             <span className="text-white/20">•</span>
             <span className={`flex items-center gap-1 ${active ? 'text-white/80' : ''}`}>
               <Clock className="w-3 h-3" />
@@ -64,9 +69,16 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
         {/* Odds Area */}
         {positionsHidden ? (
            <div className="flex items-center justify-between mt-auto bg-[#030608]/50 border border-white/5 rounded-xl px-4 py-3 group-hover:border-eclipse-green/20 transition-colors">
-             <div className="text-eclipse-green text-sm font-medium flex items-center gap-2">
-               <Shield className="h-4 w-4" /> 
-               <span className="tracking-wide">Shielded Odds</span>
+             <div className="text-left">
+               <div className="text-eclipse-green text-sm font-medium flex items-center gap-2">
+                 <Shield className="h-4 w-4" />
+                 <span className="tracking-wide">{isPriceMarket ? 'Shielded Price Market' : 'Shielded Odds'}</span>
+               </div>
+               {isPriceMarket && (
+                 <div className="mt-1 text-xs text-eclipse-text-muted">
+                   {market.priceMarket?.asset ?? 'Asset'} {market.priceMarket?.direction ?? 'above'} {targetLabel ?? 'target'}
+                 </div>
+               )}
              </div>
              <div className="text-xs font-medium px-4 py-1.5 bg-white/5 border border-white/10 text-white rounded-lg group-hover:bg-eclipse-green group-hover:text-black group-hover:border-eclipse-green transition-all duration-300">
                Trade

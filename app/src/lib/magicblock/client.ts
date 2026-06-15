@@ -72,6 +72,10 @@ export function isJwtExpired(token: string, bufferSeconds = 60): boolean {
   return payload.exp <= Math.floor(Date.now() / 1000) + bufferSeconds;
 }
 
+function getTeeTokenStorageKey(publicKey: PublicKey): string {
+  return `magicblock:tee-token:${publicKey.toBase58()}`;
+}
+
 // ─── TEE Auth ────────────────────────────────────────────────────────────────
 
 /**
@@ -85,6 +89,28 @@ export async function fetchTeeAuthToken(
 ): Promise<string> {
   const auth = await getAuthToken(TEE_AUTH_ENDPOINT, publicKey, signMessage);
   return auth.token;
+}
+
+export async function getOrFetchTeeAuthToken(
+  publicKey: PublicKey,
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>
+): Promise<string> {
+  const storageKey = getTeeTokenStorageKey(publicKey);
+
+  if (typeof window !== 'undefined') {
+    const cachedToken = window.sessionStorage.getItem(storageKey);
+    if (cachedToken && !isJwtExpired(cachedToken)) {
+      return cachedToken;
+    }
+  }
+
+  const token = await fetchTeeAuthToken(publicKey, signMessage);
+
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(storageKey, token);
+  }
+
+  return token;
 }
 
 // ─── HTTP Helpers ────────────────────────────────────────────────────────────
@@ -220,8 +246,16 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getConnection(sendTo: string): Connection {
-  return sendTo === 'ephemeral' ? ephemeralConnection : baseConnection;
+function getConnection(sendTo: string, ephemeralToken?: string): Connection {
+  if (sendTo !== 'ephemeral') {
+    return baseConnection;
+  }
+
+  if (ephemeralToken) {
+    return new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(ephemeralToken)}`, 'confirmed');
+  }
+
+  return ephemeralConnection;
 }
 
 function isAlreadyProcessedError(error: unknown): boolean {
@@ -237,10 +271,10 @@ export async function signAndSend(
   signTransaction: (
     tx: Transaction | VersionedTransaction
   ) => Promise<Transaction | VersionedTransaction>,
-  opts: { sendTo?: string } = {}
+  opts: { sendTo?: string; ephemeralToken?: string } = {}
 ): Promise<string> {
   const buf = Buffer.from(txBase64, 'base64');
-  const conn = getConnection(opts.sendTo || 'base');
+  const conn = getConnection(opts.sendTo || 'base', opts.ephemeralToken);
   const skipPreflight = opts.sendTo === 'ephemeral';
 
   // Deserialize (try versioned first, then legacy)

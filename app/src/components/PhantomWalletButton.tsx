@@ -5,10 +5,8 @@ import { usePhantom, useConnect, useDisconnect, useAccounts, useIsExtensionInsta
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
 import { ChevronDown, ExternalLink, RefreshCw, Coins, Zap } from "lucide-react";
-import { getBaseBalance, getPrivateBalance, fetchTeeAuthToken } from "@/lib/magicblock";
+import { getBaseBalance, getPrivateBalance, getOrFetchTeeAuthToken } from "@/lib/magicblock";
 
-// USDC Devnet mint address
-const USDC_DEVNET_MINT = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
 const RPC_URL = "https://api.devnet.solana.com";
 
 interface WalletBalances {
@@ -35,7 +33,7 @@ export function PhantomWalletButton() {
     loading: false
   });
   const [showDropdown, setShowDropdown] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [collateralMint, setCollateralMint] = useState<string | null>(null);
 
   // Get Solana address
   const solanaAccount = accounts?.find((a) => a.addressType === AddressType.solana);
@@ -44,26 +42,46 @@ export function PhantomWalletButton() {
 
   // Fetch TEE Auth token if needed
   const getOrFetchAuthToken = useCallback(async () => {
-    if (authToken) return authToken;
     const phantom = (window as any).phantom?.solana;
     if (!address || !phantom) return null;
 
     try {
-      const token = await fetchTeeAuthToken(new PublicKey(address), async (msg: Uint8Array) => {
+      const token = await getOrFetchTeeAuthToken(new PublicKey(address), async (msg: Uint8Array) => {
         const { signature } = await phantom.signMessage(msg, 'utf8');
         return signature;
       });
-      setAuthToken(token);
       return token;
     } catch (e) {
       console.error("Failed to authenticate with TEE:", e);
       return null;
     }
-  }, [address, authToken]);
+  }, [address]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProtocolConfig = async () => {
+      try {
+        const response = await fetch('/api/config');
+        const json = await response.json();
+        if (!cancelled && json?.success && json?.data?.collateralMint) {
+          setCollateralMint(json.data.collateralMint);
+        }
+      } catch (error) {
+        console.error('Failed to fetch protocol config:', error);
+      }
+    };
+
+    loadProtocolConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch balances
   const fetchBalances = useCallback(async () => {
-    if (!address) return;
+    if (!address || !collateralMint) return;
 
     setBalances(prev => ({ ...prev, loading: true }));
 
@@ -77,7 +95,7 @@ export function PhantomWalletButton() {
       // Fetch USDC balance
       let usdcBalance = 0;
       try {
-        const usdcAta = await getAssociatedTokenAddress(USDC_DEVNET_MINT, publicKey);
+        const usdcAta = await getAssociatedTokenAddress(new PublicKey(collateralMint), publicKey);
         const accountInfo = await getAccount(connection, usdcAta);
         usdcBalance = Number(accountInfo.amount) / 1_000_000; // 6 decimals
       } catch {
@@ -107,17 +125,17 @@ export function PhantomWalletButton() {
       console.error("Error fetching balances:", error);
       setBalances(prev => ({ ...prev, loading: false }));
     }
-  }, [address, getOrFetchAuthToken]);
+  }, [address, collateralMint, getOrFetchAuthToken]);
 
   // Fetch balances when connected
   useEffect(() => {
-    if (isConnected && address) {
+    if (isConnected && address && collateralMint) {
       fetchBalances();
       // Refresh every 30 seconds
       const interval = setInterval(fetchBalances, 30000);
       return () => clearInterval(interval);
     }
-  }, [isConnected, address, fetchBalances]);
+  }, [isConnected, address, collateralMint, fetchBalances]);
 
   // Handle connection
   const handleConnect = async () => {

@@ -4,6 +4,7 @@
  */
 
 import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+export { fetchTeeAuthToken, getOrFetchTeeAuthToken } from '@/lib/magicblock';
 
 const API_BASE = '';
 const RPC_URL = 'https://api.devnet.solana.com';
@@ -198,7 +199,7 @@ export async function executeTradeDirectly(
 export async function resolveMarket(params: {
   marketAddress: string;
   outcome: 'yes' | 'no';
-}): Promise<{ resolveSignature: string; commitSignature: string }> {
+}): Promise<{ resolveSignature: string; commitSignature: string | null }> {
   const res = await fetch(`${API_BASE}/api/trading/resolve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -252,6 +253,7 @@ export async function prepareClaimTransaction(params: {
 
   const json = await res.json();
   if (!json.success) {
+    throw new Error(json.error || 'Failed to prepare claim transaction');
   }
 
   return json.data;

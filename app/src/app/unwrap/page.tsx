@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import { Button } from '@/components/ui/button';
-import { getPrivateBalance, withdraw, signAndSend, fetchTeeAuthToken } from '@/lib/magicblock';
+import { getPrivateBalance, withdraw, signAndSend, getOrFetchTeeAuthToken } from '@/lib/magicblock';
 import { PublicKey } from '@solana/web3.js';
 
 export default function UnwrapPage() {
@@ -41,7 +41,7 @@ export default function UnwrapPage() {
     const phantom = (window as any).phantom?.solana;
     if (!walletAddress || !phantom) throw new Error("Wallet not fully connected");
 
-    const token = await fetchTeeAuthToken(new PublicKey(walletAddress), async (msg: Uint8Array) => (await phantom.signMessage(msg, 'utf8')).signature);
+    const token = await getOrFetchTeeAuthToken(new PublicKey(walletAddress), async (msg: Uint8Array) => (await phantom.signMessage(msg, 'utf8')).signature);
     setAuthToken(token);
     return token;
   }, [walletAddress, authToken]);
@@ -98,7 +98,11 @@ export default function UnwrapPage() {
       }
 
       // 2. Sign and send to Ephemeral Rollup RPC
-      const signature = await signAndSend(res.transactionBase64, (tx) => phantom.signTransaction(tx), { sendTo: 'ephemeral' });
+      const signature = await signAndSend(
+        res.transactionBase64,
+        (tx) => phantom.signTransaction(tx),
+        { sendTo: 'ephemeral', ephemeralToken: token }
+      );
 
       setSuccess(signature);
       setAmount('');
