@@ -32,11 +32,7 @@ impl PythagoreanCurve {
 
         let r = reserves as u128;
         let r_squared = checked_square(r)?;
-        let token_amount = integer_sqrt(
-            r_squared
-                .checked_div(2)
-                .ok_or(AmmError::DivisionByZero)?,
-        );
+        let token_amount = integer_sqrt(r_squared.checked_div(2).ok_or(AmmError::DivisionByZero)?);
 
         u128_to_u64(token_amount)
     }
@@ -74,10 +70,7 @@ impl PythagoreanCurve {
         let new_r_squared = checked_square(new_r)?;
         let other_squared = checked_square(other)?;
 
-        require!(
-            new_r_squared >= other_squared,
-            AmmError::InvalidInvariant
-        );
+        require!(new_r_squared >= other_squared, AmmError::InvalidInvariant);
 
         let new_target_squared = new_r_squared
             .checked_sub(other_squared)
@@ -148,11 +141,7 @@ impl PythagoreanCurve {
     ///
     /// 10_000 = 1.0
     /// 7_071  ≈ 0.7071
-    pub fn get_price_bps(
-        reserves: u64,
-        target_supply: u64,
-        _other_supply: u64,
-    ) -> Result<u64> {
+    pub fn get_price_bps(reserves: u64, target_supply: u64, _other_supply: u64) -> Result<u64> {
         require!(reserves > 0, AmmError::InvalidReserves);
 
         let numerator = (target_supply as u128)
@@ -237,7 +226,11 @@ fn u128_to_u64(value: u128) -> Result<u64> {
 
 /// Absolute difference between two u128 values.
 fn abs_diff_u128(a: u128, b: u128) -> u128 {
-    if a >= b { a - b } else { b - a }
+    if a >= b {
+        a - b
+    } else {
+        b - a
+    }
 }
 
 /// Integer square root using Newton's method.

@@ -5,10 +5,13 @@ use ephemeral_rollups_sdk::ephem::{FoldableIntentBuilder, MagicIntentBundleBuild
 
 use crate::amm::PythagoreanCurve;
 use crate::state::{
-    Config, ConfigError, Market, MarketError, MarketStatus, Outcome, PositionError,
-    PrivateMarketState, PRIVATE_MARKET_STATE_DISCRIMINATOR, PrivatePositionState,
-    PRIVATE_POSITION_STATE_DISCRIMINATOR, PrivateStateError, TraderPosition,
+    Config, ConfigError, Market, MarketError, MarketOracleKind, MarketStatus, Outcome,
+    PositionError, PriceDirection, PrivateMarketState, PrivatePositionState, PrivateStateError,
+    TraderPosition, PRIVATE_MARKET_STATE_DISCRIMINATOR, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
+
+const PYTH_LAZER_PRICE_OFFSET: usize = 73;
+const PYTH_LAZER_PRICE_LEN: usize = 8;
 
 /// Event emitted when private market state is initialized inside MagicBlock / PER.
 #[event]
@@ -60,6 +63,7 @@ pub struct PrivateMarketResolvedEr {
     pub final_reserves: u64,
     pub final_yes_supply: u64,
     pub final_no_supply: u64,
+    pub resolver_price: i64,
     pub timestamp: i64,
 }
 
@@ -87,9 +91,9 @@ pub struct PrivatePositionSettledEr {
 /// The delegated market shell itself tracks live ER market totals.
 #[derive(Accounts)]
 pub struct InitializePrivateMarketState<'info> {
-    /// Market creator.
+    /// Creator or protocol admin finalizing the private market state.
     #[account(mut)]
-    pub creator: Signer<'info>,
+    pub initializer: Signer<'info>,
 
     /// Global config.
     #[account(
@@ -105,7 +109,7 @@ pub struct InitializePrivateMarketState<'info> {
     #[account(
         seeds = [Market::SEED, market.id.to_le_bytes().as_ref()],
         bump = market.bump,
-        constraint = market.creator == creator.key() @ MarketError::UnauthorizedCreator,
+        constraint = market.creator == initializer.key() || config.admin == initializer.key() @ ConfigError::Unauthorized,
         constraint = market.status == MarketStatus::Active @ MarketError::MarketNotActive,
         constraint = market.collateral_mint == config.collateral_mint,
     )]
@@ -119,7 +123,7 @@ pub struct InitializePrivateMarketState<'info> {
     /// This delegated shell is deserialized manually to avoid Anchor write-back
     /// on exit.
     #[account(
-        seeds = [TraderPosition::SEED, market.key().as_ref(), creator.key().as_ref()],
+        seeds = [TraderPosition::SEED, market.key().as_ref(), market.creator.as_ref()],
         bump,
     )]
     pub creator_position: AccountInfo<'info>,
@@ -129,11 +133,10 @@ pub struct InitializePrivateMarketState<'info> {
     /// CHECK:
     /// Created on L1, delegated into MagicBlock, then loaded manually.
     #[account(
-        seeds = [PrivatePositionState::SEED, market.key().as_ref(), creator.key().as_ref()],
+        seeds = [PrivatePositionState::SEED, market.key().as_ref(), market.creator.as_ref()],
         bump,
     )]
     pub private_position: AccountInfo<'info>,
-
 }
 
 impl<'info> InitializePrivateMarketState<'info> {
@@ -142,7 +145,8 @@ impl<'info> InitializePrivateMarketState<'info> {
         _bumps: InitializePrivateMarketStateBumps,
     ) -> Result<()> {
         let clock = Clock::get()?;
-        let creator_position = load_position_from_account_info_allow_delegated(&self.creator_position)?;
+        let creator_position =
+            load_position_from_account_info_allow_delegated(&self.creator_position)?;
 
         require_keys_eq!(
             creator_position.market,
@@ -151,7 +155,7 @@ impl<'info> InitializePrivateMarketState<'info> {
         );
         require_keys_eq!(
             creator_position.trader,
-            self.creator.key(),
+            self.market.creator,
             PositionError::UnauthorizedTrader
         );
         require!(
@@ -172,7 +176,7 @@ impl<'info> InitializePrivateMarketState<'info> {
 
         let creator_private_position = load_private_position_state(&self.private_position)?;
         creator_private_position.assert_market(&self.market.key())?;
-        creator_private_position.assert_trader(&self.creator.key())?;
+        creator_private_position.assert_trader(&self.market.creator)?;
         creator_private_position.assert_not_claimed()?;
 
         require!(
@@ -185,7 +189,7 @@ impl<'info> InitializePrivateMarketState<'info> {
 
         emit!(PrivateMarketStateInitialized {
             market: self.market.key(),
-            creator: self.creator.key(),
+            creator: self.market.creator,
             private_market_state: self.market.key(),
             creator_private_position: self.private_position.key(),
             reserves: initial_liquidity,
@@ -268,14 +272,8 @@ impl<'info> InitializePrivatePositionState<'info> {
             self.trader.key(),
             PositionError::UnauthorizedTrader
         );
-        require!(
-            !position.claimed,
-            PositionError::PositionAlreadyClaimed
-        );
-        require!(
-            !position.settled,
-            PositionError::PositionAlreadySettled
-        );
+        require!(!position.claimed, PositionError::PositionAlreadyClaimed);
+        require!(!position.settled, PositionError::PositionAlreadySettled);
 
         let collateral_available = position.l1_idle_collateral()?;
 
@@ -417,11 +415,7 @@ pub struct PlacePrivatePrediction<'info> {
 }
 
 impl<'info> PlacePrivatePrediction<'info> {
-    pub fn place_private_prediction(
-        &mut self,
-        amount: u64,
-        predict_yes: bool,
-    ) -> Result<()> {
+    pub fn place_private_prediction(&mut self, amount: u64, predict_yes: bool) -> Result<()> {
         require!(amount > 0, PrivateStateError::InvalidAmount);
 
         let clock = Clock::get()?;
@@ -445,14 +439,8 @@ impl<'info> PlacePrivatePrediction<'info> {
             self.trader.key(),
             PositionError::UnauthorizedTrader
         );
-        require!(
-            !position.claimed,
-            PositionError::PositionAlreadyClaimed
-        );
-        require!(
-            !position.settled,
-            PositionError::PositionAlreadySettled
-        );
+        require!(!position.claimed, PositionError::PositionAlreadyClaimed);
+        require!(!position.settled, PositionError::PositionAlreadySettled);
 
         let mut private_position = load_private_position_state(&self.private_position)?;
         private_position.assert_trader(&self.trader.key())?;
@@ -463,19 +451,22 @@ impl<'info> PlacePrivatePrediction<'info> {
 
         if predict_yes {
             private_position.add_yes_shares(amount)?;
-            self.market.live_yes_supply = self.market
+            self.market.live_yes_supply = self
+                .market
                 .live_yes_supply
                 .checked_add(amount)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         } else {
             private_position.add_no_shares(amount)?;
-            self.market.live_no_supply = self.market
+            self.market.live_no_supply = self
+                .market
                 .live_no_supply
                 .checked_add(amount)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         }
 
-        self.market.live_reserves = self.market
+        self.market.live_reserves = self
+            .market
             .live_reserves
             .checked_add(amount)
             .ok_or(PrivateStateError::ArithmeticOverflow)?;
@@ -492,9 +483,7 @@ impl<'info> PlacePrivatePrediction<'info> {
             self.magic_context.to_account_info(),
             self.magic_program.to_account_info(),
         )
-        .commit(&[
-            self.private_position.to_account_info(),
-        ])
+        .commit(&[self.private_position.to_account_info()])
         .build_and_invoke()?;
 
         Ok(())
@@ -531,7 +520,6 @@ pub struct ResolvePrivateMarketEr<'info> {
         constraint = market.collateral_mint == config.collateral_mint,
     )]
     pub market: Account<'info, Market>,
-
 }
 
 impl<'info> ResolvePrivateMarketEr<'info> {
@@ -539,10 +527,8 @@ impl<'info> ResolvePrivateMarketEr<'info> {
         let clock = Clock::get()?;
 
         let market_id_bytes = self.market.id.to_le_bytes();
-        let (expected_market, expected_bump) = Pubkey::find_program_address(
-            &[Market::SEED, market_id_bytes.as_ref()],
-            &crate::ID,
-        );
+        let (expected_market, expected_bump) =
+            Pubkey::find_program_address(&[Market::SEED, market_id_bytes.as_ref()], &crate::ID);
 
         require_keys_eq!(
             expected_market,
@@ -556,21 +542,21 @@ impl<'info> ResolvePrivateMarketEr<'info> {
         );
 
         require!(
+            self.market.oracle_kind == MarketOracleKind::Manual,
+            MarketError::InvalidOracleKind
+        );
+
+        require!(
             clock.unix_timestamp >= self.market.end_time as i64,
             MarketError::MarketNotEnded
         );
 
         require!(
-            self.market.status == MarketStatus::Active
-                || self.market.status == MarketStatus::Ended,
+            self.market.status == MarketStatus::Active || self.market.status == MarketStatus::Ended,
             PrivateRollupInstructionError::MarketAlreadyResolved
         );
 
-        let outcome = if yes_wins {
-            Outcome::Yes
-        } else {
-            Outcome::No
-        };
+        let outcome = if yes_wins { Outcome::Yes } else { Outcome::No };
 
         let final_reserves = self.market.live_reserves;
         self.market.mark_resolved(outcome, final_reserves);
@@ -584,6 +570,7 @@ impl<'info> ResolvePrivateMarketEr<'info> {
             final_reserves,
             final_yes_supply: self.market.live_yes_supply,
             final_no_supply: self.market.live_no_supply,
+            resolver_price: self.market.resolver_price,
             timestamp: clock.unix_timestamp,
         });
 
@@ -597,6 +584,132 @@ impl<'info> ResolvePrivateMarketEr<'info> {
 
         Ok(())
     }
+}
+
+/// Resolve a private price market from a MagicBlock Pyth Lazer feed.
+///
+/// The feed account is expected to be available on the ER. MagicBlock's oracle
+/// plugin writes Pyth Lazer prices into composable accounts that can be read by
+/// programs executing inside the rollup.
+#[commit]
+#[derive(Accounts)]
+pub struct ResolvePriceMarketEr<'info> {
+    /// Keeper / resolver paying for the ER transaction.
+    #[account(mut)]
+    pub resolver: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// Public market shell.
+    #[account(
+        mut,
+        seeds = [Market::SEED, &market.id.to_le_bytes()],
+        bump = market.bump,
+        constraint = market.collateral_mint == config.collateral_mint,
+    )]
+    pub market: Account<'info, Market>,
+
+    /// MagicBlock Pyth Lazer price feed account.
+    ///
+    /// CHECK: Validated against market.oracle_feed and parsed read-only.
+    pub oracle_feed: AccountInfo<'info>,
+}
+
+impl<'info> ResolvePriceMarketEr<'info> {
+    pub fn resolve_price_market_er(&mut self) -> Result<()> {
+        let clock = Clock::get()?;
+
+        let market_id_bytes = self.market.id.to_le_bytes();
+        let (expected_market, expected_bump) =
+            Pubkey::find_program_address(&[Market::SEED, market_id_bytes.as_ref()], &crate::ID);
+
+        require_keys_eq!(
+            expected_market,
+            self.market.key(),
+            PrivateRollupInstructionError::InvalidMarketPda
+        );
+
+        require!(
+            expected_bump == self.market.bump,
+            PrivateRollupInstructionError::InvalidMarketPda
+        );
+
+        require!(
+            self.market.oracle_kind == MarketOracleKind::PythPrice,
+            MarketError::InvalidOracleKind
+        );
+
+        require_keys_eq!(
+            self.oracle_feed.key(),
+            self.market.oracle_feed,
+            MarketError::InvalidOracleFeed
+        );
+
+        require!(
+            clock.unix_timestamp >= self.market.end_time as i64,
+            MarketError::MarketNotEnded
+        );
+
+        require!(
+            self.market.status == MarketStatus::Active || self.market.status == MarketStatus::Ended,
+            PrivateRollupInstructionError::MarketAlreadyResolved
+        );
+
+        let observed_price = read_pyth_lazer_price(&self.oracle_feed)?;
+        let yes_wins = match self.market.price_direction {
+            PriceDirection::Above => observed_price >= self.market.target_price,
+            PriceDirection::Below => observed_price < self.market.target_price,
+        };
+
+        let outcome = if yes_wins { Outcome::Yes } else { Outcome::No };
+
+        let final_reserves = self.market.live_reserves;
+        self.market.resolver_price = observed_price;
+        self.market.mark_resolved(outcome, final_reserves);
+        self.market.mark_settlement_open();
+        self.market.exit(&crate::ID)?;
+
+        emit!(PrivateMarketResolvedEr {
+            market: self.market.key(),
+            resolver: self.resolver.key(),
+            outcome,
+            final_reserves,
+            final_yes_supply: self.market.live_yes_supply,
+            final_no_supply: self.market.live_no_supply,
+            resolver_price: observed_price,
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.resolver.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[self.market.to_account_info()])
+        .build_and_invoke()?;
+
+        Ok(())
+    }
+}
+
+fn read_pyth_lazer_price(oracle_feed: &AccountInfo) -> Result<i64> {
+    let data = oracle_feed.try_borrow_data()?;
+    let price_end = PYTH_LAZER_PRICE_OFFSET
+        .checked_add(PYTH_LAZER_PRICE_LEN)
+        .ok_or(MarketError::ArithmeticOverflow)?;
+
+    require!(data.len() >= price_end, MarketError::OracleFeedDataTooShort);
+
+    let mut price_bytes = [0u8; PYTH_LAZER_PRICE_LEN];
+    price_bytes.copy_from_slice(&data[PYTH_LAZER_PRICE_OFFSET..price_end]);
+
+    Ok(i64::from_le_bytes(price_bytes))
 }
 
 /// Settle one private position after market resolution.
@@ -680,10 +793,6 @@ impl<'info> SettlePrivatePositionEr<'info> {
             private_position.collateral_deposited
         } else {
             let winning_supply = self.market.winning_live_supply()?;
-            require!(
-                winning_supply > 0,
-                PrivateStateError::WinningSupplyIsZero
-            );
 
             let winning_shares = match self.market.outcome {
                 Outcome::Yes => private_position.yes_shares,
@@ -691,11 +800,15 @@ impl<'info> SettlePrivatePositionEr<'info> {
                 Outcome::Invalid | Outcome::Undetermined => 0,
             };
 
-            let winning_payout = PythagoreanCurve::proportional_payout(
-                winning_shares,
-                winning_supply,
-                self.market.final_reserves,
-            )?;
+            let winning_payout = if winning_shares == 0 || winning_supply == 0 {
+                0
+            } else {
+                PythagoreanCurve::proportional_payout(
+                    winning_shares,
+                    winning_supply,
+                    self.market.final_reserves,
+                )?
+            };
 
             idle_collateral
                 .checked_add(winning_payout)
@@ -739,6 +852,138 @@ impl<'info> SettlePrivatePositionEr<'info> {
     }
 }
 
+/// Keeper/admin settlement path for one private position after market resolution.
+///
+/// This is intentionally the same calculation as `SettlePrivatePositionEr`,
+/// but the signer is the configured oracle/admin instead of the trader.
+#[commit]
+#[derive(Accounts)]
+pub struct SettlePrivatePositionByKeeperEr<'info> {
+    /// Protocol admin or oracle/keeper.
+    #[account(mut)]
+    pub keeper: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// Public market shell.
+    #[account(
+        seeds = [Market::SEED, market.id.to_le_bytes().as_ref()],
+        bump = market.bump,
+        constraint = market.status == MarketStatus::SettlementOpen
+            || market.status == MarketStatus::Resolved
+            || market.status == MarketStatus::Closed @ MarketError::MarketNotResolved,
+        constraint = market.collateral_mint == config.collateral_mint,
+    )]
+    pub market: Account<'info, Market>,
+
+    /// Public position shell for the trader being settled.
+    #[account(
+        mut,
+        seeds = [TraderPosition::SEED, market.key().as_ref(), position.trader.as_ref()],
+        bump = position.bump,
+        constraint = position.market == market.key() @ PositionError::PositionMarketMismatch,
+        constraint = !position.claimed @ PositionError::PositionAlreadyClaimed,
+        constraint = !position.settled @ PositionError::PositionAlreadySettled,
+    )]
+    pub position: Account<'info, TraderPosition>,
+
+    /// ER/PER-only trader private position state.
+    ///
+    /// CHECK:
+    /// Loaded/stored manually.
+    #[account(
+        mut,
+        seeds = [PrivatePositionState::SEED, market.key().as_ref(), position.trader.as_ref()],
+        bump,
+    )]
+    pub private_position: AccountInfo<'info>,
+}
+
+impl<'info> SettlePrivatePositionByKeeperEr<'info> {
+    pub fn settle_private_position_by_keeper_er(&mut self) -> Result<u64> {
+        require!(
+            self.keeper.key() == self.config.oracle || self.keeper.key() == self.config.admin,
+            ConfigError::Unauthorized
+        );
+
+        let clock = Clock::get()?;
+        let mut private_position = load_private_position_state(&self.private_position)?;
+
+        self.market.assert_resolved_or_settlement_open()?;
+        private_position.assert_trader(&self.position.trader)?;
+        private_position.assert_market(&self.market.key())?;
+        private_position.assert_not_claimed()?;
+
+        let idle_collateral = private_position.collateral_available;
+
+        let claimable_amount = if self.market.outcome == Outcome::Invalid {
+            private_position.collateral_deposited
+        } else {
+            let winning_supply = self.market.winning_live_supply()?;
+
+            let winning_shares = match self.market.outcome {
+                Outcome::Yes => private_position.yes_shares,
+                Outcome::No => private_position.no_shares,
+                Outcome::Invalid | Outcome::Undetermined => 0,
+            };
+
+            let winning_payout = if winning_shares == 0 || winning_supply == 0 {
+                0
+            } else {
+                PythagoreanCurve::proportional_payout(
+                    winning_shares,
+                    winning_supply,
+                    self.market.final_reserves,
+                )?
+            };
+
+            idle_collateral
+                .checked_add(winning_payout)
+                .ok_or(PrivateStateError::ArithmeticOverflow)?
+        };
+
+        self.position.settle(claimable_amount)?;
+        private_position.mark_claimed();
+
+        store_private_position_state(&self.private_position, &private_position)?;
+        self.position.exit(&crate::ID)?;
+
+        let winning_shares = match self.market.outcome {
+            Outcome::Yes => private_position.yes_shares,
+            Outcome::No => private_position.no_shares,
+            Outcome::Invalid | Outcome::Undetermined => 0,
+        };
+
+        emit!(PrivatePositionSettledEr {
+            market: self.market.key(),
+            trader: self.position.trader,
+            position: self.position.key(),
+            claimable_amount,
+            idle_collateral,
+            winning_shares,
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.keeper.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[
+            self.position.to_account_info(),
+            self.private_position.to_account_info(),
+        ])
+        .build_and_invoke()?;
+
+        Ok(claimable_amount)
+    }
+}
+
 /// Load PrivateMarketState from an ER/PER account.
 pub fn load_private_market_state(account: &AccountInfo) -> Result<PrivateMarketState> {
     let data = account.try_borrow_data()?;
@@ -760,10 +1005,7 @@ pub fn load_private_market_state(account: &AccountInfo) -> Result<PrivateMarketS
 }
 
 /// Store PrivateMarketState into an ER/PER account.
-pub fn store_private_market_state(
-    account: &AccountInfo,
-    state: &PrivateMarketState,
-) -> Result<()> {
+pub fn store_private_market_state(account: &AccountInfo, state: &PrivateMarketState) -> Result<()> {
     let mut data = account.try_borrow_mut_data()?;
 
     require!(
@@ -819,13 +1061,14 @@ pub fn store_private_position_state(
     Ok(())
 }
 
-fn load_position_from_account_info_allow_delegated(account: &AccountInfo) -> Result<TraderPosition> {
+fn load_position_from_account_info_allow_delegated(
+    account: &AccountInfo,
+) -> Result<TraderPosition> {
     let data = account.try_borrow_data()?;
     let mut slice: &[u8] = &data;
     TraderPosition::try_deserialize(&mut slice)
         .map_err(|_| error!(PrivateRollupInstructionError::InvalidAccount))
 }
-
 
 #[error_code]
 pub enum PrivateRollupInstructionError {

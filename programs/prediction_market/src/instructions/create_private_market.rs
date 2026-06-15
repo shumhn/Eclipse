@@ -1,14 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
-    },
+    token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::state::{
-    Config, ConfigError, Market, MarketError, MarketStatus, Outcome,
-    PrivatePositionState, PRIVATE_POSITION_STATE_DISCRIMINATOR, TraderPosition,
+    Config, ConfigError, Market, MarketError, MarketOracleKind, MarketStatus, Outcome,
+    PriceDirection, PrivatePositionState, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 /// Event emitted when a new private prediction market is created.
@@ -27,6 +25,10 @@ pub struct PrivateMarketCreated {
     pub initial_liquidity: u64,
     pub collateral_mint: Pubkey,
     pub vault: Pubkey,
+    pub oracle_kind: MarketOracleKind,
+    pub price_direction: PriceDirection,
+    pub target_price: i64,
+    pub oracle_feed: Pubkey,
     pub timestamp: i64,
 }
 
@@ -150,6 +152,57 @@ impl<'info> CreatePrivateMarket<'info> {
         initial_liquidity: u64,
         bumps: CreatePrivateMarketBumps,
     ) -> Result<()> {
+        self.create_market_with_oracle(
+            question,
+            end_time,
+            initial_liquidity,
+            MarketOracleKind::Manual,
+            PriceDirection::Above,
+            0,
+            Pubkey::default(),
+            bumps,
+        )
+    }
+
+    pub fn create_price_market(
+        &mut self,
+        question: String,
+        end_time: u64,
+        initial_liquidity: u64,
+        target_price: i64,
+        price_direction: PriceDirection,
+        oracle_feed: Pubkey,
+        bumps: CreatePrivateMarketBumps,
+    ) -> Result<()> {
+        require_keys_neq!(
+            oracle_feed,
+            Pubkey::default(),
+            MarketError::InvalidOracleFeed
+        );
+
+        self.create_market_with_oracle(
+            question,
+            end_time,
+            initial_liquidity,
+            MarketOracleKind::PythPrice,
+            price_direction,
+            target_price,
+            oracle_feed,
+            bumps,
+        )
+    }
+
+    fn create_market_with_oracle(
+        &mut self,
+        question: String,
+        end_time: u64,
+        initial_liquidity: u64,
+        oracle_kind: MarketOracleKind,
+        price_direction: PriceDirection,
+        target_price: i64,
+        oracle_feed: Pubkey,
+        bumps: CreatePrivateMarketBumps,
+    ) -> Result<()> {
         let clock = Clock::get()?;
 
         require!(
@@ -210,6 +263,11 @@ impl<'info> CreatePrivateMarket<'info> {
             total_claimed: 0,
             status: MarketStatus::Active,
             outcome: Outcome::Undetermined,
+            oracle_kind,
+            price_direction,
+            target_price,
+            oracle_feed,
+            resolver_price: 0,
             bump: bumps.market,
         });
 
@@ -241,10 +299,7 @@ impl<'info> CreatePrivateMarket<'info> {
             bumps.creator_private_position,
         );
 
-        store_creator_private_position(
-            &self.creator_private_position,
-            &creator_private_position,
-        )?;
+        store_creator_private_position(&self.creator_private_position, &creator_private_position)?;
 
         // Increment market count.
         self.config.market_count = self
@@ -263,6 +318,10 @@ impl<'info> CreatePrivateMarket<'info> {
             initial_liquidity,
             collateral_mint: self.collateral_mint.key(),
             vault: self.vault.key(),
+            oracle_kind,
+            price_direction,
+            target_price,
+            oracle_feed,
             timestamp: clock.unix_timestamp,
         });
 

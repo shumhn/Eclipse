@@ -79,6 +79,11 @@ pub mod prediction_market {
         ctx.accounts.update_tee_validator(new_tee_validator)
     }
 
+    /// Update the protocol collateral mint used by newly created markets.
+    pub fn update_collateral_mint(ctx: Context<UpdateCollateralMint>) -> Result<()> {
+        ctx.accounts.update_collateral_mint()
+    }
+
     // ------------------------------------------------------------------------
     // Permissionless market creation
     // ------------------------------------------------------------------------
@@ -99,6 +104,30 @@ pub mod prediction_market {
     ) -> Result<()> {
         ctx.accounts
             .create_private_market(question, end_time, initial_liquidity, ctx.bumps)
+    }
+
+    /// Create a private prediction market resolved by a MagicBlock Pyth Lazer
+    /// price feed inside the Ephemeral Rollup.
+    ///
+    /// YES means the configured price condition is true at resolution time.
+    pub fn create_price_market(
+        ctx: Context<CreatePrivateMarket>,
+        question: String,
+        end_time: u64,
+        initial_liquidity: u64,
+        target_price: i64,
+        price_direction: PriceDirection,
+        oracle_feed: Pubkey,
+    ) -> Result<()> {
+        ctx.accounts.create_price_market(
+            question,
+            end_time,
+            initial_liquidity,
+            target_price,
+            price_direction,
+            oracle_feed,
+            ctx.bumps,
+        )
     }
 
     // ------------------------------------------------------------------------
@@ -239,11 +268,7 @@ pub mod prediction_market {
             .accounts
             .validate_delegate_private_position(market, trader)?;
 
-        let seeds: &[&[u8]] = &[
-            PrivatePositionState::SEED,
-            market.as_ref(),
-            trader.as_ref(),
-        ];
+        let seeds: &[&[u8]] = &[PrivatePositionState::SEED, market.as_ref(), trader.as_ref()];
 
         ctx.accounts.delegate_private_position(
             &ctx.accounts.authority,
@@ -397,6 +422,11 @@ pub mod prediction_market {
         ctx.accounts.resolve_private_market_er(yes_wins)
     }
 
+    /// Resolve a MagicBlock/Pyth price market inside ER/PER.
+    pub fn resolve_price_market_er(ctx: Context<ResolvePriceMarketEr>) -> Result<()> {
+        ctx.accounts.resolve_price_market_er()
+    }
+
     /// Settle a private position after market resolution.
     ///
     /// This calculates:
@@ -405,5 +435,16 @@ pub mod prediction_market {
     /// Then writes claimable_amount into the public TraderPosition shell.
     pub fn settle_private_position_er(ctx: Context<SettlePrivatePositionEr>) -> Result<u64> {
         ctx.accounts.settle_private_position_er()
+    }
+
+    /// Keeper/admin path to settle a private position after market resolution.
+    ///
+    /// This gives the off-chain scheduler an Epoch-style last-mile path:
+    /// resolve expired price markets, settle trader positions, then users only
+    /// need the final L1 claim when claimable_amount is available.
+    pub fn settle_private_position_by_keeper_er(
+        ctx: Context<SettlePrivatePositionByKeeperEr>,
+    ) -> Result<u64> {
+        ctx.accounts.settle_private_position_by_keeper_er()
     }
 }

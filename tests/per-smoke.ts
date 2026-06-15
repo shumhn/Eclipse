@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as anchor from '@coral-xyz/anchor';
-import { AnchorProvider, BN, Program, Wallet, workspace, setProvider } from '@coral-xyz/anchor';
 import {
   Connection,
   Keypair,
@@ -14,9 +13,7 @@ import {
   TOKEN_PROGRAM_ID,
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddress,
-  createMint,
   getOrCreateAssociatedTokenAccount,
-  mintTo,
 } from '@solana/spl-token';
 import { assert } from 'chai';
 import bs58 from 'bs58';
@@ -35,6 +32,9 @@ import nacl from 'tweetnacl';
 
 dotenv.config();
 
+const anchorPkg = (anchor as any).default ?? anchor;
+const { AnchorProvider, BN, Program, Wallet, workspace, setProvider } = anchorPkg;
+
 if (!process.env.ANCHOR_PROVIDER_URL) {
   process.env.ANCHOR_PROVIDER_URL = 'https://api.devnet.solana.com';
 }
@@ -48,6 +48,7 @@ const PROGRAM_ID = new PublicKey('79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t')
 const MAGIC_PROGRAM_ID = new PublicKey('Magic11111111111111111111111111111111111111');
 const MAGIC_CONTEXT_ID = new PublicKey('MagicContext1111111111111111111111111111111');
 const MAGIC_VAULT_ID = new PublicKey('MagicVau1t999999999999999999999999999999999');
+const DEVNET_USDC_MINT = new PublicKey('4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU');
 
 async function sendTeeTransaction(
   connection: Connection,
@@ -182,22 +183,27 @@ describe('PER Prediction Market Smoke', () => {
 
     [configPda] = PublicKey.findProgramAddressSync([Buffer.from('config')], PROGRAM_ID);
 
-    // Try to fetch existing config to reuse its mint
+    // Use standard devnet USDC for the real smoke flow.
     const configInfo = await provider.connection.getAccountInfo(configPda);
     if (configInfo) {
       const configData = await (program.account as any).config.fetch(configPda);
-      collateralMint = configData.collateralMint;
-      console.log("Using existing fake USDC mint from config:", collateralMint.toBase58());
+      collateralMint = DEVNET_USDC_MINT;
+      if (!configData.collateralMint.equals(DEVNET_USDC_MINT)) {
+        await program.methods
+          .updateCollateralMint()
+          .accounts({
+            admin: admin.publicKey,
+            config: configPda,
+            collateralMint: DEVNET_USDC_MINT,
+          })
+          .signers([admin])
+          .rpc();
+      }
+      console.log("Using standard devnet USDC mint:", collateralMint.toBase58());
     } else {
-      // Create a fake USDC mint for this test run so we don't depend on faucets
-      const mintKeypair = Keypair.generate();
-      collateralMint = await createMint(provider.connection, admin, admin.publicKey, null, 6, mintKeypair);
-      console.log("Created fake USDC mint:", collateralMint.toBase58());
+      collateralMint = DEVNET_USDC_MINT;
+      console.log("Initializing config with standard devnet USDC mint:", collateralMint.toBase58());
     }
-    
-    // Mint 100 USDC to the trader
-    const traderAta = await getOrCreateAssociatedTokenAccount(provider.connection, admin, collateralMint, trader.publicKey);
-    await mintTo(provider.connection, admin, collateralMint, traderAta.address, admin.publicKey, 100_000_000);
   });
 
   it('initializes config (or verifies it exists)', async () => {
@@ -404,7 +410,7 @@ describe('PER Prediction Market Smoke', () => {
       const ix = await ephemeralProgram.methods
         .initializePrivateMarketState()
         .accounts({
-          creator: trader.publicKey,
+          initializer: trader.publicKey,
           config: configPda,
           market: marketPda,
           creatorPosition: traderPositionPda,

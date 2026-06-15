@@ -70,6 +70,24 @@ pub struct Market {
     /// Only meaningful after the market is resolved.
     pub outcome: Outcome,
 
+    /// Resolution source for this market.
+    pub oracle_kind: MarketOracleKind,
+
+    /// Price condition direction when oracle_kind is PythPrice.
+    pub price_direction: PriceDirection,
+
+    /// Target price in the oracle feed's raw integer units.
+    ///
+    /// For MagicBlock Pyth Lazer feeds, this uses the raw i64 price read from
+    /// the feed account. The UI/crank should scale display values per feed.
+    pub target_price: i64,
+
+    /// MagicBlock oracle feed account for price-resolved markets.
+    pub oracle_feed: Pubkey,
+
+    /// Price observed at resolution. Zero for manual markets until resolved.
+    pub resolver_price: i64,
+
     /// PDA bump.
     pub bump: u8,
 }
@@ -138,17 +156,35 @@ impl Market {
     }
 }
 
+/// Market resolution source.
+#[derive(
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug, Default,
+)]
+pub enum MarketOracleKind {
+    /// Configured oracle signer resolves YES/NO manually.
+    #[default]
+    Manual,
+
+    /// MagicBlock Pyth Lazer feed resolves a price condition inside ER/PER.
+    PythPrice,
+}
+
+/// Price condition direction.
+#[derive(
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug, Default,
+)]
+pub enum PriceDirection {
+    /// YES wins if observed price is greater than or equal to target_price.
+    #[default]
+    Above,
+
+    /// YES wins if observed price is strictly below target_price.
+    Below,
+}
+
 /// Public lifecycle status of the market shell.
 #[derive(
-    AnchorSerialize,
-    AnchorDeserialize,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    InitSpace,
-    Debug,
-    Default,
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug, Default,
 )]
 pub enum MarketStatus {
     /// Market is open for private trading inside MagicBlock / PER.
@@ -173,15 +209,7 @@ pub enum MarketStatus {
 
 /// Binary prediction outcome.
 #[derive(
-    AnchorSerialize,
-    AnchorDeserialize,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    InitSpace,
-    Debug,
-    Default,
+    AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace, Debug, Default,
 )]
 pub enum Outcome {
     /// Not resolved yet.
@@ -231,4 +259,13 @@ pub enum MarketError {
 
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
+
+    #[msg("Invalid oracle kind for this instruction")]
+    InvalidOracleKind,
+
+    #[msg("Invalid oracle feed account")]
+    InvalidOracleFeed,
+
+    #[msg("Oracle feed account data is too short")]
+    OracleFeedDataTooShort,
 }

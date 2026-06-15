@@ -37,6 +37,14 @@ pub struct TeeValidatorUpdated {
     pub new_tee_validator: Pubkey,
 }
 
+/// Event emitted when the protocol collateral mint changes.
+#[event]
+pub struct CollateralMintUpdated {
+    pub admin: Pubkey,
+    pub old_collateral_mint: Pubkey,
+    pub new_collateral_mint: Pubkey,
+}
+
 /// Accounts for protocol initialization.
 ///
 /// This instruction is called once during deployment.
@@ -199,6 +207,41 @@ impl<'info> UpdateTeeValidator<'info> {
             admin: self.admin.key(),
             old_tee_validator,
             new_tee_validator,
+        });
+
+        Ok(())
+    }
+}
+
+/// Accounts for updating the protocol collateral mint.
+#[derive(Accounts)]
+pub struct UpdateCollateralMint<'info> {
+    /// Protocol admin.
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        mut,
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = config.admin == admin.key() @ ConfigError::Unauthorized,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// New collateral mint used by future markets.
+    pub collateral_mint: InterfaceAccount<'info, Mint>,
+}
+
+impl<'info> UpdateCollateralMint<'info> {
+    pub fn update_collateral_mint(&mut self) -> Result<()> {
+        let old_collateral_mint = self.config.collateral_mint;
+        self.config.collateral_mint = self.collateral_mint.key();
+
+        emit!(CollateralMintUpdated {
+            admin: self.admin.key(),
+            old_collateral_mint,
+            new_collateral_mint: self.collateral_mint.key(),
         });
 
         Ok(())

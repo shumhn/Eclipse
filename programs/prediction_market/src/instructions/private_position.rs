@@ -1,14 +1,12 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
-    },
+    token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 use crate::state::{
-    Config, ConfigError, Market, MarketError, PositionError, PrivatePositionState,
-    PRIVATE_POSITION_STATE_DISCRIMINATOR, TraderPosition,
+    Config, ConfigError, Market, MarketError, PositionError, PrivatePositionState, TraderPosition,
+    PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 /// Event emitted when a trader opens a position shell.
@@ -74,11 +72,11 @@ pub struct OpenPosition<'info> {
     pub config: Account<'info, Config>,
 
     /// Market shell.
-    #[account(
-        constraint = market.status == crate::state::MarketStatus::Active @ MarketError::MarketNotActive,
-        constraint = market.collateral_mint == config.collateral_mint,
-    )]
-    pub market: Account<'info, Market>,
+    ///
+    /// This may already be delegated to MagicBlock, so it must be loaded
+    /// manually instead of through Anchor's owner-checked Account<Market>.
+    /// CHECK: Deserialized and validated in the handler to support delegated ownership.
+    pub market: AccountInfo<'info>,
 
     /// Trader position shell.
     #[account(
@@ -108,6 +106,14 @@ pub struct OpenPosition<'info> {
 impl<'info> OpenPosition<'info> {
     pub fn open_position(&mut self, bumps: OpenPositionBumps) -> Result<()> {
         let clock = Clock::get()?;
+        let market = load_market_from_account_info_allow_delegated(&self.market)?;
+
+        market.assert_active()?;
+        require_keys_eq!(
+            market.collateral_mint,
+            self.config.collateral_mint,
+            PrivatePositionInstructionError::InvalidCollateralMint
+        );
 
         self.position.set_inner(TraderPosition {
             market: self.market.key(),
@@ -167,13 +173,11 @@ pub struct DepositCollateral<'info> {
     pub config: Account<'info, Config>,
 
     /// Market shell.
-    #[account(
-        mut,
-        constraint = market.status == crate::state::MarketStatus::Active @ MarketError::MarketNotActive,
-        constraint = market.collateral_mint == config.collateral_mint,
-        constraint = market.collateral_mint == collateral_mint.key(),
-    )]
-    pub market: Account<'info, Market>,
+    ///
+    /// Fresh traders may deposit after the market shell has been delegated.
+    /// Treat it as read-only account data and validate fields in the handler.
+    /// CHECK: Deserialized and validated in the handler to support delegated ownership.
+    pub market: AccountInfo<'info>,
 
     /// Trader position shell.
     #[account(
@@ -214,10 +218,8 @@ pub struct DepositCollateral<'info> {
     /// Market vault.
     #[account(
         mut,
-        associated_token::mint = collateral_mint,
-        associated_token::authority = market,
-        associated_token::token_program = token_program,
-        constraint = vault.key() == market.vault @ PrivatePositionInstructionError::InvalidVault,
+        constraint = vault.mint == collateral_mint.key(),
+        constraint = vault.owner == market.key(),
     )]
     pub vault: InterfaceAccount<'info, TokenAccount>,
 
@@ -234,8 +236,25 @@ pub struct DepositCollateral<'info> {
 impl<'info> DepositCollateral<'info> {
     pub fn deposit_collateral(&mut self, amount: u64) -> Result<()> {
         let clock = Clock::get()?;
+        let market = load_market_from_account_info_allow_delegated(&self.market)?;
 
         require!(amount > 0, PositionError::InvalidAmount);
+        market.assert_active()?;
+        require_keys_eq!(
+            market.collateral_mint,
+            self.config.collateral_mint,
+            PrivatePositionInstructionError::InvalidCollateralMint
+        );
+        require_keys_eq!(
+            market.collateral_mint,
+            self.collateral_mint.key(),
+            PrivatePositionInstructionError::InvalidCollateralMint
+        );
+        require_keys_eq!(
+            self.vault.key(),
+            market.vault,
+            PrivatePositionInstructionError::InvalidVault
+        );
 
         require!(
             self.trader_collateral.amount >= amount,
@@ -272,12 +291,6 @@ impl<'info> DepositCollateral<'info> {
             .ok_or(PositionError::ArithmeticOverflow)?;
         store_private_position(&self.private_position, &private_position)?;
 
-        self.market.total_deposited = self
-            .market
-            .total_deposited
-            .checked_add(amount)
-            .ok_or(MarketError::ArithmeticOverflow)?;
-
         emit!(CollateralDeposited {
             market: self.market.key(),
             trader: self.trader.key(),
@@ -309,10 +322,7 @@ fn load_private_position(account: &AccountInfo) -> Result<PrivatePositionState> 
         .map_err(|_| error!(PrivatePositionInstructionError::InvalidPrivatePositionAccount))
 }
 
-fn store_private_position(
-    account: &AccountInfo,
-    state: &PrivatePositionState,
-) -> Result<()> {
+fn store_private_position(account: &AccountInfo, state: &PrivatePositionState) -> Result<()> {
     let mut data = account.try_borrow_mut_data()?;
 
     require!(
@@ -326,6 +336,14 @@ fn store_private_position(
     state.serialize(&mut writer)?;
 
     Ok(())
+}
+
+fn load_market_from_account_info_allow_delegated(account: &AccountInfo) -> Result<Market> {
+    let data = account.try_borrow_data()?;
+    let mut slice: &[u8] = &data;
+
+    Market::try_deserialize(&mut slice)
+        .map_err(|_| error!(PrivatePositionInstructionError::InvalidMarketAccount))
 }
 
 /// Withdraw idle collateral before the position has been delegated/activated
@@ -349,7 +367,6 @@ pub struct WithdrawCollateral<'info> {
 
     /// Market shell.
     #[account(
-        mut,
         constraint = market.status == crate::state::MarketStatus::Active @ MarketError::MarketNotActive,
         constraint = market.collateral_mint == config.collateral_mint,
         constraint = market.collateral_mint == collateral_mint.key(),
@@ -411,12 +428,6 @@ impl<'info> WithdrawCollateral<'info> {
         require!(amount > 0, PositionError::InvalidAmount);
 
         self.position.add_withdrawal(amount)?;
-
-        self.market.total_deposited = self
-            .market
-            .total_deposited
-            .checked_sub(amount)
-            .ok_or(MarketError::ArithmeticOverflow)?;
 
         let market_id_bytes = self.market.id.to_le_bytes();
         let market_seeds: &[&[u8]] = &[Market::SEED, market_id_bytes.as_ref(), &[self.market.bump]];
@@ -615,4 +626,10 @@ pub enum PrivatePositionInstructionError {
 
     #[msg("Invalid private position account")]
     InvalidPrivatePositionAccount,
+
+    #[msg("Invalid market account")]
+    InvalidMarketAccount,
+
+    #[msg("Invalid collateral mint")]
+    InvalidCollateralMint,
 }

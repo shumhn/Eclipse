@@ -2,15 +2,15 @@ use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::access_control::{
     instructions::CreatePermissionCpiBuilder,
     structs::{
-        Member, MembersArgs, Permission, ACCOUNT_SIGNATURES_FLAG, AUTHORITY_FLAG,
-        TX_BALANCES_FLAG, TX_LOGS_FLAG, TX_MESSAGE_FLAG,
+        Member, MembersArgs, Permission, ACCOUNT_SIGNATURES_FLAG, AUTHORITY_FLAG, TX_BALANCES_FLAG,
+        TX_LOGS_FLAG, TX_MESSAGE_FLAG,
     },
 };
 use ephemeral_rollups_sdk::anchor::{commit, delegate};
 
 use crate::state::{
     Config, ConfigError, Market, MarketStatus, PositionError, PrivatePositionState,
-    PrivateStateError, PRIVATE_POSITION_STATE_DISCRIMINATOR, TraderPosition,
+    PrivateStateError, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 /// Event emitted when a market shell is delegated into MagicBlock / PER.
@@ -648,7 +648,11 @@ impl<'info> UndelegatePosition<'info> {
 
 /// Load a Market from AccountInfo manually.
 fn load_market_from_account_info(account: &AccountInfo) -> Result<Market> {
-    require_keys_eq!(*account.owner, crate::ID, DelegateError::InvalidAccountOwner);
+    require_keys_eq!(
+        *account.owner,
+        crate::ID,
+        DelegateError::InvalidAccountOwner
+    );
     let data = account.try_borrow_data()?;
     let mut slice: &[u8] = &data;
     Market::try_deserialize(&mut slice).map_err(|_| error!(DelegateError::InvalidMarketAccount))
@@ -662,20 +666,32 @@ fn load_market_from_account_info_allow_delegated(account: &AccountInfo) -> Resul
 
 /// Load a TraderPosition from AccountInfo manually.
 fn load_position_from_account_info(account: &AccountInfo) -> Result<TraderPosition> {
-    require_keys_eq!(*account.owner, crate::ID, DelegateError::InvalidAccountOwner);
+    require_keys_eq!(
+        *account.owner,
+        crate::ID,
+        DelegateError::InvalidAccountOwner
+    );
     let data = account.try_borrow_data()?;
     let mut slice: &[u8] = &data;
-    TraderPosition::try_deserialize(&mut slice).map_err(|_| error!(DelegateError::InvalidPositionAccount))
+    TraderPosition::try_deserialize(&mut slice)
+        .map_err(|_| error!(DelegateError::InvalidPositionAccount))
 }
 
-fn load_position_from_account_info_allow_delegated(account: &AccountInfo) -> Result<TraderPosition> {
+fn load_position_from_account_info_allow_delegated(
+    account: &AccountInfo,
+) -> Result<TraderPosition> {
     let data = account.try_borrow_data()?;
     let mut slice: &[u8] = &data;
-    TraderPosition::try_deserialize(&mut slice).map_err(|_| error!(DelegateError::InvalidPositionAccount))
+    TraderPosition::try_deserialize(&mut slice)
+        .map_err(|_| error!(DelegateError::InvalidPositionAccount))
 }
 
 fn load_private_position_from_account_info(account: &AccountInfo) -> Result<PrivatePositionState> {
-    require_keys_eq!(*account.owner, crate::ID, DelegateError::InvalidAccountOwner);
+    require_keys_eq!(
+        *account.owner,
+        crate::ID,
+        DelegateError::InvalidAccountOwner
+    );
 
     let data = account.try_borrow_data()?;
 

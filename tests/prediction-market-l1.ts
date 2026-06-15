@@ -12,10 +12,9 @@ import {
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
-  createMint,
+  getAccount,
   getAssociatedTokenAddress,
   getOrCreateAssociatedTokenAccount,
-  mintTo,
   transferChecked,
 } from '@solana/spl-token';
 import {
@@ -40,7 +39,52 @@ const MAGIC_PROGRAM_ID = new PublicKey(
 const MAGIC_CONTEXT_ID = new PublicKey(
   'MagicContext1111111111111111111111111111111'
 );
+const PYTH_LAZER_PROGRAM_ID = new PublicKey(
+  'PriCems5tHihc6UDXDjzjeawomAwBduWMGAi8ZUjppd'
+);
+const MAGICBLOCK_SOL_USD_FEED = new PublicKey(
+  'ENYwebBThHzmzwPLAQvCucUTsjyfBSZdD9ViXksS4jPu'
+);
+const DEVNET_USDC_MINT = new PublicKey(
+  '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+);
 const ER_SPONSOR_BUFFER_LAMPORTS = 100_000;
+
+async function ensureTokenBalance(
+  connection: Connection,
+  payer: Keypair,
+  mint: PublicKey,
+  owner: PublicKey,
+  requiredAmount: bigint
+) {
+  const tokenAccount = await getOrCreateAssociatedTokenAccount(
+    connection,
+    payer,
+    mint,
+    owner
+  );
+
+  if (tokenAccount.amount >= requiredAmount) {
+    return tokenAccount.address;
+  }
+
+  throw new Error(
+    `Wallet ${owner.toBase58()} needs ${requiredAmount.toString()} units of mint ${mint.toBase58()}, ` +
+      `but only has ${tokenAccount.amount.toString()}. Fund real devnet USDC before running this test.`
+  );
+}
+
+function derivePythLazerFeedAddress(feedId: string): PublicKey {
+  const [feed] = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from('price_feed'),
+      Buffer.from('pyth-lazer'),
+      Buffer.from(feedId),
+    ],
+    PYTH_LAZER_PROGRAM_ID
+  );
+  return feed;
+}
 
 async function sendTeeTransaction(
   connection: Connection,
@@ -139,7 +183,7 @@ async function getTeeValidatorIdentity(endpoint: string) {
       params: [],
     }),
   });
-  const body = await response.json();
+  const body = (await response.json()) as { result: { identity: string } };
   return new PublicKey(body.result.identity);
 }
 
@@ -190,6 +234,7 @@ describe('prediction_market L1 smoke', () => {
   let latestPositionPda: PublicKey;
   let latestPrivatePositionPda: PublicKey;
   let latestMarketEndTime: number;
+  let latestOracleFeedPda: PublicKey;
   let adminCollateralAta: PublicKey;
   let ephemeralConnection: Connection;
   let ephemeralProgram: Program<PredictionMarket>;
@@ -210,7 +255,7 @@ describe('prediction_market L1 smoke', () => {
 
     if (existingConfigInfo) {
       const configAccount = await program.account.config.fetch(configPda);
-      collateralMint = configAccount.collateralMint;
+      collateralMint = DEVNET_USDC_MINT;
       if (!configAccount.oracle.equals(oracle.publicKey)) {
         await program.methods
           .updateOracle(oracle.publicKey)
@@ -232,14 +277,20 @@ describe('prediction_market L1 smoke', () => {
           .signers([admin])
           .rpc();
       }
+
+      if (!configAccount.collateralMint.equals(DEVNET_USDC_MINT)) {
+        await program.methods
+          .updateCollateralMint()
+          .accountsPartial({
+            admin: admin.publicKey,
+            config: configPda,
+            collateralMint: DEVNET_USDC_MINT,
+          })
+          .signers([admin])
+          .rpc();
+      }
     } else {
-      collateralMint = await createMint(
-        provider.connection,
-        admin,
-        admin.publicKey,
-        null,
-        6
-      );
+      collateralMint = DEVNET_USDC_MINT;
 
       await program.methods
         .initialize(0, oracle.publicKey, configuredTeeValidator)
@@ -297,23 +348,15 @@ describe('prediction_market L1 smoke', () => {
   });
 
   it('creates a private market with initial liquidity on L1', async () => {
-    const adminAta = await getOrCreateAssociatedTokenAccount(
+    const adminAta = await ensureTokenBalance(
       provider.connection,
       admin,
       collateralMint,
-      admin.publicKey
-    );
-
-    await mintTo(
-      provider.connection,
-      admin,
-      collateralMint,
-      adminAta.address,
       admin.publicKey,
-      2_000_000
+      2_000_000n
     );
 
-    adminCollateralAta = adminAta.address;
+    adminCollateralAta = adminAta;
 
     const configAccount = await program.account.config.fetch(configPda);
     const marketId = configAccount.marketCount.toNumber();
@@ -346,13 +389,21 @@ describe('prediction_market L1 smoke', () => {
       true
     );
 
-    const question = `Will L1 smoke test market ${Date.now()} succeed?`;
+    latestOracleFeedPda = MAGICBLOCK_SOL_USD_FEED;
+    const question = `Will SOL/USD stay above zero for L1 smoke ${Date.now()}?`;
     latestMarketEndTime = Math.floor(Date.now() / 1000) + 90;
     const endTime = new anchor.BN(latestMarketEndTime);
     const initialLiquidity = new anchor.BN(1_000_000);
 
     await program.methods
-      .createPrivateMarket(question, endTime, initialLiquidity)
+      .createPriceMarket(
+        question,
+        endTime,
+        initialLiquidity,
+        new anchor.BN(0),
+        { above: {} },
+        latestOracleFeedPda
+      )
       .accountsPartial({
         creator: admin.publicKey,
         config: configPda,
@@ -456,6 +507,17 @@ describe('prediction_market L1 smoke', () => {
       trader.publicKey
     );
 
+    const adminCollateralAccount = await getAccount(
+      provider.connection,
+      adminCollateralAta,
+      'confirmed',
+      TOKEN_PROGRAM_ID
+    );
+    assert.ok(
+      adminCollateralAccount.amount >= 400_000n,
+      `admin needs at least 400000 units of ${collateralMint.toBase58()} for trader funding`
+    );
+
     await transferChecked(
       provider.connection,
       admin,
@@ -501,7 +563,7 @@ describe('prediction_market L1 smoke', () => {
     assert.equal(positionAfter.collateralDeposited.toString(), depositAmount.toString());
     assert.equal(
       marketAfter.totalDeposited.toString(),
-      marketBefore.totalDeposited.add(depositAmount).toString()
+      marketBefore.totalDeposited.toString()
     );
   });
 
@@ -795,7 +857,7 @@ describe('prediction_market L1 smoke', () => {
     const ix = await ephemeralProgram.methods
       .initializePrivateMarketState()
       .accountsPartial({
-        creator: admin.publicKey,
+        initializer: admin.publicKey,
         config: configPda,
         market: latestMarketPda,
         creatorPosition: creatorPositionPda,
@@ -912,8 +974,6 @@ describe('prediction_market L1 smoke', () => {
         market: latestMarketPda,
         position: latestPositionPda,
         privatePosition: latestPrivatePositionPda,
-        magicProgram: MAGIC_PROGRAM_ID,
-        magicContext: MAGIC_CONTEXT_ID,
       })
       .instruction();
 
@@ -964,11 +1024,12 @@ describe('prediction_market L1 smoke', () => {
     }
 
     const ix = await ephemeralProgram.methods
-      .resolvePrivateMarketEr(true)
+      .resolvePriceMarketEr()
       .accountsPartial({
-        oracle: oracle.publicKey,
+        resolver: oracle.publicKey,
         config: configPda,
         market: latestMarketPda,
+        oracleFeed: latestOracleFeedPda,
         magicProgram: MAGIC_PROGRAM_ID,
         magicContext: MAGIC_CONTEXT_ID,
       })
