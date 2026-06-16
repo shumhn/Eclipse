@@ -1,4 +1,4 @@
-# 🌒 Eclipse: Privacy-Preserving Prediction Markets
+# Eclipse: Privacy-Preserving Prediction Markets
 
 Eclipse is a fully decentralized, **permissionless prediction market** built on **Solana** and powered by **MagicBlock Private Ephemeral Rollups (TEEs)** and **AI Agents**.
 
@@ -8,7 +8,7 @@ Prediction markets are powerful, but their public nature destroys trading alpha.
 
 ---
 
-## 🛑 The Problem
+## The Problem
 
 Prediction markets on blockchains are transparent by design. When you place a bet with high conviction, the entire world sees it:
 - Your wallet address
@@ -20,7 +20,7 @@ This creates massive structural problems:
 2. **Loss of Edge (Adverse Selection):** Traders with genuine alpha or inside information have no way to profit from it without instantly signaling the market and giving away their strategy to copy-traders.
 3. **Stale Markets:** Creating markets manually is slow. In a fast-moving world, by the time a market is launched manually, the news has already been priced in.
 
-## 🌒 Our Solution
+##  Our Solution
 
 **Eclipse** solves these issues by combining **Trusted Execution Environments (TEEs)** for absolute privacy with **AI Agents** for autonomous market creation.
 
@@ -30,16 +30,16 @@ When you trade on Eclipse, your funds are shielded into a MagicBlock TEE. The gl
 
 ## ⚡ Core Features
 
-### 1. 🛡️ Private by Default (The "Dark" Markets)
+### 1.  Private by Default (The "Dark" Markets)
 By utilizing MagicBlock's Ephemeral Rollups running inside a Trusted Execution Environment, Eclipse acts as a **Private Ephemeral Rollup (PER)**. 
 - **Ephemeral:** When a market is created, its state transitions are delegated *off* the Solana L1 and into the MagicBlock TEE.
 - **Private:** Trades, bids, asks, and positions are shielded from the public mempool. Whales cannot be front-run.
 - **Settlement:** When the market resolves, the TEE halts ephemeral execution and commits the final, settled state back to the Solana L1 for public redemption.
 
-### 2. 🤖 AI-Driven Autonomous Markets
+### 2. AI-Driven Autonomous Markets
 Eclipse features a backend AI Agent (powered by Google Gemini) that autonomously scrapes global news, Twitter, and crypto trends to instantly spin up timely prediction markets on-chain. While the AI acts as a primary market creator to ensure fresh liquidity, the protocol itself remains entirely open.
 
-### 3. 🌍 100% Permissionless
+### 3.  100% Permissionless
 There are no gatekeepers, whitelist databases, or centralized admin checks. Deployed natively on the Solana L1:
 - **Anyone** can call the `create_market` instruction to launch their own market.
 - **Anyone** can provide liquidity.
@@ -50,7 +50,7 @@ Eclipse utilizes a **Pythagorean Bonding Curve** (`x² + y² = r²`) rather than
 
 ---
 
-## 🚀 The Trade Flow
+## The Trade Flow
 
 1. **Market Creation & Delegation:**
    A user (or the AI Agent) creates a new prediction market on the Solana L1. Using the `#[delegate]` macro, the newly created market accounts are immediately delegated off the public network and into the MagicBlock TEE validator.
@@ -69,7 +69,7 @@ Eclipse utilizes a **Pythagorean Bonding Curve** (`x² + y² = r²`) rather than
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Smart Contracts:** Rust & Anchor framework (v0.32.1)
 - **Privacy Engine:** MagicBlock Ephemeral Rollups (`@magicblock-labs/ephemeral-rollups-sdk`)
@@ -79,7 +79,7 @@ Eclipse utilizes a **Pythagorean Bonding Curve** (`x² + y² = r²`) rather than
 
 ---
 
-## 💻 Running Locally
+##  Running Locally
 
 ### 1. Prerequisites
 - Node.js (v18+)
