@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
+import {
+  DEFAULT_PRICE_FEED_SYMBOL,
+  isSupportedPriceFeedSymbol,
+  type PriceFeedSymbol,
+} from '@/lib/priceFeeds';
+
+const priceFeedSymbolSchema = z.custom<PriceFeedSymbol>(
+  (value) => typeof value === 'string' && isSupportedPriceFeedSymbol(value),
+  'Unsupported price feed'
+);
 
 const prepareCreateMarketSchema = z.object({
   walletAddress: z.string(),
@@ -8,7 +18,7 @@ const prepareCreateMarketSchema = z.object({
   initialLiquidity: z.number().min(1000000, 'Minimum 1 token (1000000 units)'),
   endTime: z.number().int().positive(),
   oracleKind: z.enum(['manual', 'pythPrice']).optional().default('pythPrice'),
-  oracleAsset: z.enum(['SOLUSD', 'BTCUSD']).optional().default('SOLUSD'),
+  oracleAsset: priceFeedSymbolSchema.optional().default(DEFAULT_PRICE_FEED_SYMBOL),
   targetPrice: z.string().optional().default('0'),
   priceDirection: z.enum(['above', 'below']).optional().default('above'),
   oracleFeed: z.string().optional(),

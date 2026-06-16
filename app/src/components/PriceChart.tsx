@@ -2,53 +2,68 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { Connection, PublicKey, type AccountInfo } from "@solana/web3.js";
+import {
+  PRICE_FEED_BY_ASSET,
+  type PriceFeedAsset,
+} from "@/lib/priceFeeds";
+
+const MAGICBLOCK_ER_RPC_URL = "https://devnet.magicblock.app";
+const MAGICBLOCK_ER_WS_URL = "wss://devnet.magicblock.app";
+const PYTH_LAZER_PROGRAM_ID = new PublicKey(
+  "PriCems5tHihc6UDXDjzjeawomAwBduWMGAi8ZUjppd",
+);
+const PYTH_LAZER_PRICE_OFFSET = 73;
 
 interface PriceChartProps {
-  asset: "SOL/USD" | "BTC/USD" | "Unknown";
+  asset: PriceFeedAsset | "Unknown";
   targetPriceUsd: number | null;
   direction?: "above" | "below";
   resolutionTimestamp?: number;
 }
 
-const FEED_IDS: Record<string, string> = {
-  "SOL/USD": "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
-  "BTC/USD": "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-};
-
-const SYMBOLS: Record<string, string> = {
-  "SOL/USD": "Crypto.SOL/USD",
-  "BTC/USD": "Crypto.BTC/USD",
-};
-
-function getDynamicColor(
-  price: number,
-  targetPriceUsd: number | null,
-  direction: string,
-): { line: string; top: string; bottom: string } {
-  const baseColor = "#FF8C00";
-  const baseTop = "rgba(255, 140, 0, 0.4)";
-  const baseBottom = "rgba(255, 140, 0, 0.0)";
-
-  if (!targetPriceUsd)
-    return { line: baseColor, top: baseTop, bottom: baseBottom };
-
-  const winning =
-    (direction === "above" && price > targetPriceUsd) ||
-    (direction === "below" && price < targetPriceUsd);
-
-  if (winning) {
+function getAssetColor(asset: string): { line: string; top: string; bottom: string } {
+  const normalizedAsset = (asset || '').toUpperCase();
+  if (normalizedAsset.includes('BTC') || normalizedAsset.includes('BITCOIN')) {
     return {
-      line: "#2BA859",
-      top: "rgba(43, 168, 89, 0.4)",
-      bottom: "rgba(43, 168, 89, 0.0)",
-    };
-  } else {
-    return {
-      line: "#E43E4B",
-      top: "rgba(228, 62, 75, 0.4)",
-      bottom: "rgba(228, 62, 75, 0.0)",
+      line: "#F7931A",
+      top: "rgba(247, 147, 26, 0.4)",
+      bottom: "rgba(247, 147, 26, 0.0)",
     };
   }
+  if (normalizedAsset.includes('ETH') || normalizedAsset.includes('ETHEREUM')) {
+    return {
+      line: "#627EEA",
+      top: "rgba(98, 126, 234, 0.4)",
+      bottom: "rgba(98, 126, 234, 0.0)",
+    };
+  }
+  if (normalizedAsset.includes('SOL') || normalizedAsset.includes('SOLANA')) {
+    return {
+      line: "#14F195",
+      top: "rgba(20, 241, 149, 0.4)",
+      bottom: "rgba(20, 241, 149, 0.0)",
+    };
+  }
+  if (normalizedAsset.includes('JUP') || normalizedAsset.includes('JUPITER')) {
+    return {
+      line: "#00BEF0",
+      top: "rgba(0, 190, 240, 0.4)",
+      bottom: "rgba(0, 190, 240, 0.0)",
+    };
+  }
+  if (normalizedAsset.includes('DOGE') || normalizedAsset.includes('DOGECOIN')) {
+    return {
+      line: "#C3A634",
+      top: "rgba(195, 166, 52, 0.4)",
+      bottom: "rgba(195, 166, 52, 0.0)",
+    };
+  }
+  return {
+    line: "#3b82f6",
+    top: "rgba(59, 130, 246, 0.4)",
+    bottom: "rgba(59, 130, 246, 0.0)",
+  };
 }
 
 function PriceChartInner({
@@ -63,6 +78,8 @@ function PriceChartInner({
   const chartRef = useRef<any>(null);
   const areaSeriesRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
+  const [streamSource, setStreamSource] = useState<"magicblock" | "hermes" | "connecting">("connecting");
+  const [updateCount, setUpdateCount] = useState(0);
   const lastTimeRef = useRef(0);
 
   // One-time chart creation
@@ -107,13 +124,14 @@ function PriceChartInner({
       });
 
       // Use AreaSeries instead of LineSeries for that beautiful glowing look
+      const colors = getAssetColor(asset);
       const areaSeries = chart.addSeries(lc.AreaSeries, {
-        lineColor: "#FF8C00",
-        topColor: "rgba(255, 140, 0, 0.4)",
-        bottomColor: "rgba(255, 140, 0, 0.0)",
+        lineColor: colors.line,
+        topColor: colors.top,
+        bottomColor: colors.bottom,
         lineWidth: 2,
         crosshairMarkerVisible: true,
-        lastValueVisible: false,
+        lastValueVisible: true,
         priceLineVisible: false,
       });
 
@@ -157,24 +175,29 @@ function PriceChartInner({
     };
   }, [asset, targetPriceUsd, direction]);
 
-  // Data fetching and SSE stream
+  // Data fetching and MagicBlock ER websocket stream
   useEffect(() => {
     if (!ready || !areaSeriesRef.current || asset === "Unknown") return;
 
     const abortController = new AbortController();
     const signal = abortController.signal;
-    const symbol = SYMBOLS[asset];
-    const feedId = FEED_IDS[asset];
+    const selectedFeed = PRICE_FEED_BY_ASSET[asset];
+    const symbol = selectedFeed.tradingViewSymbol;
+    const feedId = selectedFeed.hermesFeedId;
     const areaSeries = areaSeriesRef.current;
     let eventSource: EventSource | null = null;
+    let connection: Connection | null = null;
+    let accountSubscriptionId: number | null = null;
     let isStreamActive = true;
+    setStreamSource("connecting");
+    setUpdateCount(0);
 
-    const updateLivePriceText = (price: number) => {
+    const updateLivePriceText = (price: number, source: "magicblock" | "hermes") => {
       if (livePriceRef.current) {
         livePriceRef.current.innerText = `$${price.toLocaleString(undefined, {
           minimumFractionDigits: 2,
         })}`;
-        const colors = getDynamicColor(price, targetPriceUsd, direction);
+        const colors = getAssetColor(asset);
         livePriceRef.current.style.color = colors.line;
 
         if (targetPriceUsd && diffPriceRef.current) {
@@ -184,6 +207,26 @@ function PriceChartInner({
           diffPriceRef.current.style.color = colors.line;
         }
       }
+
+      setStreamSource(source);
+    };
+
+    const pushLivePrice = (price: number, source: "magicblock" | "hermes") => {
+      updateLivePriceText(price, source);
+
+      const now = Date.now() / 1000;
+      const nextTime = now > lastTimeRef.current ? now : lastTimeRef.current + 0.001;
+      areaSeries.update({ time: nextTime as any, value: price });
+      lastTimeRef.current = nextTime;
+      setUpdateCount((count) => count + 1);
+      chartRef.current?.timeScale().scrollToRealTime();
+
+      const colors = getAssetColor(asset);
+      areaSeries.applyOptions({
+        lineColor: colors.line,
+        topColor: colors.top,
+        bottomColor: colors.bottom,
+      });
     };
 
     const fetchHistory = async () => {
@@ -213,7 +256,7 @@ function PriceChartInner({
             areaSeries.setData(chartData);
             chartRef.current?.timeScale().fitContent();
             lastTimeRef.current = chartData[chartData.length - 1].time;
-            updateLivePriceText(chartData[chartData.length - 1].value);
+            updateLivePriceText(chartData[chartData.length - 1].value, "hermes");
           }
         }
       } catch (err: any) {
@@ -223,8 +266,9 @@ function PriceChartInner({
       }
     };
 
-    const setupLiveStream = () => {
+    const setupHermesFallbackStream = () => {
       if (!isStreamActive) return;
+      setStreamSource("hermes");
       eventSource = new EventSource(
         `https://hermes.pyth.network/v2/updates/price/stream?ids[]=${feedId}`,
       );
@@ -242,24 +286,7 @@ function PriceChartInner({
             const actualPrice =
               Number(priceData.price) * Math.pow(10, priceData.expo);
 
-            updateLivePriceText(actualPrice);
-
-            const now = Math.floor(Date.now() / 1000);
-            if (now >= lastTimeRef.current) {
-              areaSeries.update({ time: now as any, value: actualPrice });
-              lastTimeRef.current = now;
-            }
-
-            const colors = getDynamicColor(
-              actualPrice,
-              targetPriceUsd,
-              direction,
-            );
-            areaSeries.applyOptions({
-              lineColor: colors.line,
-              topColor: colors.top,
-              bottomColor: colors.bottom,
-            });
+            pushLivePrice(actualPrice, "hermes");
           }
         } catch (err) {
           // ignore stream parse errors
@@ -269,13 +296,44 @@ function PriceChartInner({
       eventSource.onerror = () => {
         eventSource?.close();
         if (isStreamActive && !signal.aborted) {
-          setTimeout(setupLiveStream, 2000);
+          setTimeout(setupHermesFallbackStream, 2000);
         }
       };
     };
 
+    const setupMagicBlockStream = async () => {
+      try {
+        connection = new Connection(MAGICBLOCK_ER_RPC_URL, {
+          wsEndpoint: MAGICBLOCK_ER_WS_URL,
+        });
+        const feedAddress = derivePythLazerFeedAddress(selectedFeed.pythLazerId);
+
+        const handleAccountInfo = (accountInfo: AccountInfo<Buffer> | null) => {
+          if (!isStreamActive || signal.aborted) return;
+
+          const price = parsePythLazerPrice(accountInfo, selectedFeed.exponent);
+          if (price === null) return;
+          pushLivePrice(price, "magicblock");
+        };
+
+        accountSubscriptionId = connection.onAccountChange(
+          feedAddress,
+          (accountInfo) => handleAccountInfo(accountInfo as AccountInfo<Buffer>),
+          "confirmed",
+        );
+
+        const accountInfo = await connection.getAccountInfo(feedAddress, "confirmed");
+        handleAccountInfo(accountInfo as AccountInfo<Buffer> | null);
+      } catch (err) {
+        console.error("Failed to subscribe to MagicBlock Pyth feed", err);
+        if (isStreamActive && !signal.aborted) {
+          setupHermesFallbackStream();
+        }
+      }
+    };
+
     fetchHistory().then(() => {
-      if (!signal.aborted) setupLiveStream();
+      if (!signal.aborted) setupMagicBlockStream();
     });
 
     return () => {
@@ -283,6 +341,9 @@ function PriceChartInner({
       abortController.abort();
       if (eventSource) {
         eventSource.close();
+      }
+      if (connection && accountSubscriptionId !== null) {
+        connection.removeAccountChangeListener(accountSubscriptionId).catch(() => {});
       }
     };
   }, [ready, asset, targetPriceUsd, direction]);
@@ -317,12 +378,17 @@ function PriceChartInner({
                   className="text-[10px] font-bold font-mono tracking-tighter"
                 ></span>
               </span>
-              <span
-                ref={livePriceRef}
-                className="text-[22px] font-bold transition-colors duration-200 leading-none"
-              >
-                ---
-              </span>
+              <div className="flex items-end gap-2">
+                <span
+                  ref={livePriceRef}
+                  className="text-[22px] font-bold transition-colors duration-100 leading-none"
+                >
+                  ---
+                </span>
+                <span className="mb-0.5 rounded-full border border-eclipse-border bg-eclipse-panel/70 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-eclipse-text-muted">
+                  {streamSource === "magicblock" ? "MagicBlock live" : streamSource === "hermes" ? "Hermes fallback" : "Connecting"}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -333,8 +399,34 @@ function PriceChartInner({
         className="flex-1 w-full"
         style={{ minHeight: 250 }}
       />
+      <div className="pointer-events-none absolute bottom-2 right-2 rounded-full border border-eclipse-border bg-black/40 px-2 py-1 text-[10px] font-medium text-eclipse-text-muted backdrop-blur">
+        {updateCount > 0 ? `${updateCount.toLocaleString()} ticks` : "Waiting for ticks"}
+      </div>
     </div>
   );
+}
+
+function derivePythLazerFeedAddress(feedId: number): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("price_feed"),
+      Buffer.from("pyth-lazer"),
+      Buffer.from(String(feedId)),
+    ],
+    PYTH_LAZER_PROGRAM_ID,
+  )[0];
+}
+
+function parsePythLazerPrice(
+  accountInfo: AccountInfo<Buffer> | null,
+  exponent: number,
+): number | null {
+  if (!accountInfo?.data || accountInfo.data.length < PYTH_LAZER_PRICE_OFFSET + 8) {
+    return null;
+  }
+
+  const rawPrice = accountInfo.data.readBigInt64LE(PYTH_LAZER_PRICE_OFFSET);
+  return Number(rawPrice) * Math.pow(10, exponent);
 }
 
 const PriceChart = dynamic(() => Promise.resolve(PriceChartInner), {

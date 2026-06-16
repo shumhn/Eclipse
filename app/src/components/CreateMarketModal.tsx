@@ -1,11 +1,24 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
 import { X, Zap, AlertCircle, CheckCircle, Loader2, Calendar, Clock, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { CreateMarketResult, explorerAccountUrl, explorerTxUrl, finalizeCreateMarket, prepareCreateMarket } from '@/lib/api';
+import {
+  CreateMarketResult,
+  explorerAccountUrl,
+  explorerTxUrl,
+  finalizeCreateMarket,
+  prepareCreateMarket,
+} from '@/lib/api';
 import { signAndSend } from '@/lib/magicblock';
+import { useMagicBlockLivePriceFeeds } from '@/hooks/useMagicBlockLivePriceFeeds';
+import {
+  DEFAULT_PRICE_FEED_SYMBOL,
+  PRICE_FEED_BY_SYMBOL,
+  formatUsdPrice,
+  type PriceFeedSymbol,
+} from '@/lib/priceFeeds';
 
 interface CreateMarketModalProps {
   isOpen: boolean;
@@ -29,9 +42,17 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
   const [endTime, setEndTime] = useState('12:00');
 
   const [oracleKind, setOracleKind] = useState<'pythPrice' | 'manual'>('pythPrice');
-  const [oracleAsset, setOracleAsset] = useState<'SOLUSD' | 'BTCUSD'>('SOLUSD');
+  const [oracleAsset, setOracleAsset] = useState<PriceFeedSymbol>(DEFAULT_PRICE_FEED_SYMBOL);
   const [priceDirection, setPriceDirection] = useState<'above' | 'below'>('above');
   const [targetPriceUsd, setTargetPriceUsd] = useState('75');
+  const [targetTouched, setTargetTouched] = useState(false);
+  const [priceQuestion, setPriceQuestion] = useState('');
+  const [priceQuestionTouched, setPriceQuestionTouched] = useState(false);
+  const {
+    feeds: livePriceFeeds,
+    loading: feedsLoading,
+    source: livePriceSource,
+  } = useMagicBlockLivePriceFeeds(isOpen && oracleKind === 'pythPrice');
 
   // Manual markets still use the configured protocol oracle for demo fallback.
   const [useCustomOracle] = useState(false);
@@ -61,6 +82,7 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
   const isEndTimeInFuture = useMemo(() => {
     return selectedEndDateTime.getTime() > Date.now();
   }, [selectedEndDateTime]);
+
 
   // Kept only for copy/backward compatibility; creation uses exact Unix seconds.
   const endTimeHours = useMemo(() => {
@@ -93,14 +115,93 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
     });
   }, [selectedEndDateTime]);
 
+  const marketTitleDateTime = useMemo(() => {
+    return selectedEndDateTime.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }, [selectedEndDateTime]);
+
+  const marketTitleDate = useMemo(() => {
+    return selectedEndDateTime.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  }, [selectedEndDateTime]);
+
+  const selectedPriceFeed = useMemo(() => {
+    return (
+      livePriceFeeds.find((feed) => feed.symbol === oracleAsset) ||
+      livePriceFeeds[0] || {
+        ...PRICE_FEED_BY_SYMBOL[DEFAULT_PRICE_FEED_SYMBOL],
+        currentPriceUsd: null,
+        publishTime: null,
+      }
+    );
+  }, [livePriceFeeds, oracleAsset]);
+
+  const suggestedTargets = useMemo(() => {
+    const current = selectedPriceFeed.currentPriceUsd;
+    if (!current || current <= 0) return [];
+
+    const multipliers =
+      priceDirection === 'above'
+        ? [1.01, 1.03, 1.05]
+        : [0.99, 0.97, 0.95];
+
+    return multipliers.map((multiplier) => {
+      const value = roundTargetPrice(current * multiplier);
+      const diff = Math.abs(multiplier - 1) * 100;
+      return {
+        value,
+        label: `${priceDirection === 'above' ? '+' : '-'}${diff.toFixed(0)}%`,
+      };
+    });
+  }, [priceDirection, selectedPriceFeed.currentPriceUsd]);
+
+  useEffect(() => {
+    if (targetTouched || !selectedPriceFeed.currentPriceUsd) return;
+
+    const multiplier = priceDirection === 'above' ? 1.03 : 0.97;
+    setTargetPriceUsd(roundTargetPrice(selectedPriceFeed.currentPriceUsd * multiplier));
+  }, [priceDirection, selectedPriceFeed.currentPriceUsd, targetTouched]);
+
   const priceMarketQuestion = useMemo(() => {
-    const asset = oracleAsset === 'BTCUSD' ? 'BTC/USD' : 'SOL/USD';
     const direction = priceDirection === 'above' ? 'above' : 'below';
     const formattedTarget = Number(targetPriceUsd || 0).toLocaleString('en-US', {
       maximumFractionDigits: 2,
     });
-    return `Will ${asset} be ${direction} $${formattedTarget} at resolution?`;
-  }, [oracleAsset, priceDirection, targetPriceUsd]);
+    return `Will ${selectedPriceFeed.label} be ${direction} $${formattedTarget} on ${marketTitleDateTime}?`;
+  }, [marketTitleDateTime, selectedPriceFeed.label, priceDirection, targetPriceUsd]);
+
+  const priceQuestionSuggestions = useMemo(() => {
+    const direction = priceDirection === 'above' ? 'above' : 'below';
+    const directionVerb = priceDirection === 'above' ? 'hit' : 'fall below';
+    const formattedTarget = Number(targetPriceUsd || 0).toLocaleString('en-US', {
+      maximumFractionDigits: 2,
+    });
+    return [
+      priceMarketQuestion,
+      `Will ${selectedPriceFeed.baseAsset} ${directionVerb} $${formattedTarget} by ${marketTitleDate}?`,
+      `${selectedPriceFeed.label} ${direction} $${formattedTarget} on ${marketTitleDate} — Yes or No?`,
+    ];
+  }, [
+    marketTitleDate,
+    priceDirection,
+    priceMarketQuestion,
+    selectedPriceFeed.baseAsset,
+    selectedPriceFeed.label,
+    targetPriceUsd,
+  ]);
+
+  useEffect(() => {
+    if (priceQuestionTouched) return;
+    setPriceQuestion(priceMarketQuestion);
+  }, [priceMarketQuestion, priceQuestionTouched]);
 
   const rawTargetPrice = useMemo(() => {
     const usd = Number(targetPriceUsd || 0);
@@ -131,12 +232,13 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
       }
 
       const createParams = {
-        question: oracleKind === 'pythPrice' ? priceMarketQuestion : question,
+        question: oracleKind === 'pythPrice' ? priceQuestion.trim() || priceMarketQuestion : question,
         initialLiquidity: parseFloat(initialLiquidity) * 1_000_000, // Convert to units
         endTime: selectedEndTimeSeconds,
         useCustomOracle,
         oracleKind,
         oracleAsset,
+        oracleFeed: oracleKind === 'pythPrice' ? selectedPriceFeed.magicBlockFeed : undefined,
         priceDirection,
         targetPrice: rawTargetPrice,
         collateralMint: undefined, // Default backend collateral
@@ -179,9 +281,12 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
     setEndDate(tomorrow.toISOString().split('T')[0]);
     setEndTime('12:00');
     setOracleKind('pythPrice');
-    setOracleAsset('SOLUSD');
+    setOracleAsset(DEFAULT_PRICE_FEED_SYMBOL);
     setPriceDirection('above');
     setTargetPriceUsd('75');
+    setTargetTouched(false);
+    setPriceQuestion('');
+    setPriceQuestionTouched(false);
     setError(null);
     setSuccess(null);
   };
@@ -200,11 +305,11 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg mx-4 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto text-white">
+      <div className="relative w-full max-w-xl mx-4 bg-[#0d0e10] border border-white/10 rounded-md shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto text-white">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-white/10 bg-zinc-900 sticky top-0 z-10">
+        <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#0d0e10] sticky top-0 z-10">
           <div className="flex items-center gap-2">
-            <Zap className="w-6 h-6 text-emerald-500" />
+            <Zap className="w-6 h-6 text-eclipse-green" />
             <h2 className="font-bold text-xl">Create Market</h2>
           </div>
           <button
@@ -219,8 +324,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
         {success ? (
           <div className="p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center border border-emerald-500/30">
-                <CheckCircle className="w-6 h-6 text-emerald-500" />
+              <div className="w-12 h-12 bg-eclipse-green/20 rounded-full flex items-center justify-center border border-eclipse-green/30">
+                <CheckCircle className="w-6 h-6 text-eclipse-green" />
               </div>
               <div>
                 <h3 className="font-bold text-lg">Market Created!</h3>
@@ -228,7 +333,7 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
               </div>
             </div>
 
-            <div className="bg-zinc-800/50 border border-white/10 rounded-xl p-4 mb-4">
+            <div className="bg-white/[0.02] border border-white/10 rounded-sm p-4 mb-4">
               <p className="font-medium mb-2 line-clamp-2 text-white">{success.question}</p>
               <div className="text-sm text-gray-400 space-y-1">
                 <p>
@@ -237,7 +342,7 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                     href={explorerAccountUrl(success.marketAddress)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1 py-0.5 hover:text-white hover:underline border border-white/5"
+                    className="inline-flex items-center gap-1 rounded bg-white/[0.04] px-1 py-0.5 hover:text-white hover:underline border border-white/5"
                   >
                     <code>{success.marketAddress.slice(0, 20)}...</code>
                     <ExternalLink className="h-3 w-3" />
@@ -250,14 +355,18 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                 <p>
                   <span className="font-medium text-gray-300">Oracle:</span>{' '}
                   {success.oracleKind === 'pythPrice'
-                    ? `MagicBlock Pyth ${success.oracleAsset === 'BTCUSD' ? 'BTC/USD' : 'SOL/USD'}`
+                    ? `MagicBlock Pyth ${
+                        success.oracleAsset
+                          ? PRICE_FEED_BY_SYMBOL[success.oracleAsset]?.label || success.oracleAsset
+                          : 'price feed'
+                      }`
                     : 'Protocol Oracle'}
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300">
-              <p className="font-medium text-emerald-400">Real devnet proof</p>
+            <div className="mb-4 rounded-sm border border-eclipse-green/20 bg-eclipse-green/10 p-4 text-sm text-eclipse-green">
+              <p className="font-medium text-eclipse-green">Real devnet proof</p>
               <div className="mt-3 space-y-2">
                 <ProofLink label="Create market" signature={success.signature} />
                 <ProofLink label="Delegate market" signature={success.delegationSignature || undefined} />
@@ -267,10 +376,10 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
             </div>
 
             <div className="flex gap-3 mt-6">
-              <Button variant="heroSecondary" onClick={resetForm} className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white border-none">
+              <Button variant="heroSecondary" onClick={resetForm} className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-white border-none">
                 Create Another
               </Button>
-              <Button onClick={handleClose} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white">
+              <Button onClick={handleClose} className="flex-1 bg-eclipse-green hover:bg-eclipse-green-light text-white">
                 View Markets
               </Button>
             </div>
@@ -285,8 +394,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder="Will Bitcoin reach $100,000 by end of 2026?"
-                className="w-full p-3 bg-zinc-800 border border-white/10 rounded-xl resize-none
-                  focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500
+                className="w-full p-3 bg-white/[0.04] border border-white/10 rounded-sm resize-none
+                  focus:outline-none focus:border-eclipse-green focus:ring-1 focus:ring-eclipse-green
                   transition-all text-white placeholder:text-gray-600"
                 rows={3}
                 required={oracleKind === 'manual'}
@@ -309,8 +418,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                     onChange={(e) => setEndDate(e.target.value)}
                     min={minDate}
                     max={maxDate}
-                    className="w-full p-3 bg-zinc-800 border border-white/10 rounded-xl
-                      focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500
+                    className="w-full p-3 bg-white/[0.04] border border-white/10 rounded-sm
+                      focus:outline-none focus:border-eclipse-green focus:ring-1 focus:ring-eclipse-green
                       transition-all text-white [color-scheme:dark]"
                     required
                   />
@@ -320,8 +429,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full p-3 bg-zinc-800 border border-white/10 rounded-xl
-                      focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500
+                    className="w-full p-3 bg-white/[0.04] border border-white/10 rounded-sm
+                      focus:outline-none focus:border-eclipse-green focus:ring-1 focus:ring-eclipse-green
                       transition-all text-white [color-scheme:dark]"
                     required
                   />
@@ -348,8 +457,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                   onChange={(e) => setInitialLiquidity(e.target.value)}
                   min="1"
                   step="0.1"
-                  className="w-full p-3 pr-20 bg-zinc-800 border border-white/10 rounded-xl
-                    focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500
+                  className="w-full p-3 pr-20 bg-white/[0.04] border border-white/10 rounded-sm
+                    focus:outline-none focus:border-eclipse-green focus:ring-1 focus:ring-eclipse-green
                     transition-all text-white"
                   required
                 />
@@ -363,16 +472,16 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
             </div>
 
             {/* Oracle Type */}
-            <div className="space-y-3 rounded-xl border border-white/10 bg-zinc-800/50 p-4">
+            <div className="space-y-3 rounded-sm border border-white/10 bg-white/[0.02] p-4">
               <label className="block font-medium text-gray-200">Resolution Source</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setOracleKind('pythPrice')}
-                  className={`rounded-xl border p-3 text-center text-sm font-medium transition-all ${
+                  className={`rounded-sm border p-3 text-center text-sm font-medium transition-all ${
                     oracleKind === 'pythPrice' 
-                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
-                      : 'bg-zinc-800 border-white/10 text-gray-400 hover:bg-zinc-700 hover:text-gray-200'
+                      ? 'bg-eclipse-green/20 border-eclipse-green/50 text-eclipse-green' 
+                      : 'bg-white/[0.04] border-white/10 text-gray-400 hover:bg-white/[0.08] hover:text-gray-200'
                   }`}
                 >
                   MagicBlock Pyth
@@ -380,10 +489,10 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                 <button
                   type="button"
                   onClick={() => setOracleKind('manual')}
-                  className={`rounded-xl border p-3 text-center text-sm font-medium transition-all ${
+                  className={`rounded-sm border p-3 text-center text-sm font-medium transition-all ${
                     oracleKind === 'manual' 
-                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
-                      : 'bg-zinc-800 border-white/10 text-gray-400 hover:bg-zinc-700 hover:text-gray-200'
+                      ? 'bg-eclipse-green/20 border-eclipse-green/50 text-eclipse-green' 
+                      : 'bg-white/[0.04] border-white/10 text-gray-400 hover:bg-white/[0.08] hover:text-gray-200'
                   }`}
                 >
                   Manual Oracle
@@ -395,16 +504,27 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                   <div className="grid grid-cols-3 gap-2">
                     <select
                       value={oracleAsset}
-                      onChange={(e) => setOracleAsset(e.target.value as 'SOLUSD' | 'BTCUSD')}
-                      className="rounded-xl border border-white/10 bg-zinc-900 p-3 font-medium text-white focus:outline-none focus:border-emerald-500"
+                      onChange={(e) => {
+                        setOracleAsset(e.target.value as PriceFeedSymbol);
+                        setTargetTouched(false);
+                        setPriceQuestionTouched(false);
+                      }}
+                      className="rounded-sm border border-white/10 bg-[#0d0e10] p-3 font-medium text-white focus:outline-none focus:border-eclipse-green"
                     >
-                      <option value="SOLUSD">SOL/USD</option>
-                      <option value="BTCUSD">BTC/USD</option>
+                      {livePriceFeeds.map((feed) => (
+                        <option key={feed.symbol} value={feed.symbol}>
+                          {feed.label}
+                        </option>
+                      ))}
                     </select>
                     <select
                       value={priceDirection}
-                      onChange={(e) => setPriceDirection(e.target.value as 'above' | 'below')}
-                      className="rounded-xl border border-white/10 bg-zinc-900 p-3 font-medium text-white focus:outline-none focus:border-emerald-500"
+                      onChange={(e) => {
+                        setPriceDirection(e.target.value as 'above' | 'below');
+                        setTargetTouched(false);
+                        setPriceQuestionTouched(false);
+                      }}
+                      className="rounded-sm border border-white/10 bg-[#0d0e10] p-3 font-medium text-white focus:outline-none focus:border-eclipse-green"
                     >
                       <option value="above">Above</option>
                       <option value="below">Below</option>
@@ -412,23 +532,97 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                     <input
                       type="number"
                       value={targetPriceUsd}
-                      onChange={(e) => setTargetPriceUsd(e.target.value)}
-                      className="rounded-xl border border-white/10 bg-zinc-900 p-3 text-white focus:outline-none focus:border-emerald-500 placeholder:text-gray-600"
+                      onChange={(e) => {
+                        setTargetPriceUsd(e.target.value);
+                        setTargetTouched(true);
+                      }}
+                      className="rounded-sm border border-white/10 bg-[#0d0e10] p-3 text-white focus:outline-none focus:border-eclipse-green placeholder:text-gray-600"
                       min="0"
                       step="0.01"
                       placeholder="USD target"
                     />
                   </div>
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm">
-                    <p className="font-medium text-emerald-400">{priceMarketQuestion}</p>
-                    <p className="mt-1 text-xs text-emerald-500/60">
-                      Uses live MagicBlock/Pyth feed. Contract target: {rawTargetPrice}
+                  <div className="rounded-sm border border-white/10 bg-[#0d0e10]/80 p-3">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-gray-400">Live {selectedPriceFeed.label}</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-eclipse-green/70">
+                          {livePriceSource === 'magicblock'
+                            ? 'MagicBlock stream'
+                            : livePriceSource === 'hermes'
+                              ? 'Hermes fallback'
+                              : 'Connecting live feed'}
+                        </span>
+                      </div>
+                      <span className="font-semibold text-white">
+                        {feedsLoading && !selectedPriceFeed.currentPriceUsd
+                          ? 'Loading...'
+                          : formatUsdPrice(selectedPriceFeed.currentPriceUsd)}
+                      </span>
+                    </div>
+                    {suggestedTargets.length > 0 && (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        {suggestedTargets.map((target) => (
+                          <button
+                            key={target.label}
+                            type="button"
+                            onClick={() => {
+                              setTargetPriceUsd(target.value);
+                              setTargetTouched(true);
+                            }}
+                            className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-eclipse-green/50 hover:text-eclipse-green"
+                          >
+                            {target.label} · {formatUsdPrice(Number(target.value))}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Market Question
+                    </label>
+                    <textarea
+                      value={priceQuestion}
+                      onChange={(e) => {
+                        setPriceQuestion(e.target.value);
+                        setPriceQuestionTouched(true);
+                      }}
+                      className="w-full resize-none rounded-sm border border-white/10 bg-[#0d0e10] p-3 text-sm text-white transition-all placeholder:text-gray-600 focus:border-eclipse-green focus:outline-none focus:ring-1 focus:ring-eclipse-green"
+                      rows={2}
+                      minLength={10}
+                      placeholder={priceMarketQuestion}
+                    />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {priceQuestionSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => {
+                            setPriceQuestion(suggestion);
+                            setPriceQuestionTouched(true);
+                          }}
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-left text-xs text-gray-300 transition-colors hover:border-eclipse-green/50 hover:text-eclipse-green"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      You can edit the title; settlement still follows this asset, target, and resolution time.
+                    </p>
+                  </div>
+                  <div className="rounded-sm border border-eclipse-green/20 bg-eclipse-green/10 p-3 text-sm">
+                    <p className="font-medium text-eclipse-green">{priceQuestion || priceMarketQuestion}</p>
+                    <p className="mt-1 text-xs text-eclipse-green/60">
+                      Uses live MagicBlock/Pyth feed ({selectedPriceFeed.magicBlockFeed.slice(0, 6)}...
+                      {selectedPriceFeed.magicBlockFeed.slice(-4)}). Contract target: {rawTargetPrice}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-gray-400 mt-4">
-                  <Zap className="w-4 h-4 text-emerald-500" />
+                  <Zap className="w-4 h-4 text-eclipse-green" />
                   <span>Uses the configured <strong className="text-gray-200">protocol oracle</strong> for manual resolution.</span>
                 </div>
               )}
@@ -436,9 +630,56 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
 
             {/* Error */}
             {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400">
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-sm text-red-400">
                 <AlertCircle className="w-5 h-5 flex-shrink-0" />
                 <p className="text-sm font-medium">{error}</p>
+              </div>
+            )}
+
+            {/* Loading Steps UI */}
+            {loading && (
+              <div className="rounded-sm border border-white/5 bg-[#0d0e10]/80 p-4 mb-4">
+                <p className="text-sm font-semibold text-gray-200 mb-3">Creating Market...</p>
+                <div className="space-y-2.5">
+                  {[
+                    { id: 'prep', label: 'Preparing market transaction...' },
+                    { id: 'sign', label: 'Waiting for wallet signature...' },
+                    { id: 'create', label: 'Creating market on-chain...' },
+                    ...(oracleKind === 'pythPrice' ? [
+                      { id: 'delegate', label: 'Delegating to Ephemeral Rollup...' },
+                      { id: 'finalize', label: 'Finalizing MagicBlock private state...' }
+                    ] : [])
+                  ].map((step, index) => {
+                    // Determine state based on whether we've passed this step or are currently on it
+                    const isCurrent = loadingStep === step.label;
+                    let isPast = false;
+                    
+                    const stepOrder = ['Preparing market transaction...', 'Waiting for wallet signature...', 'Creating market on-chain...', 'Delegating to Ephemeral Rollup...', 'Finalizing MagicBlock private state...'];
+                    const currentIndex = stepOrder.indexOf(loadingStep || '');
+                    const thisIndex = stepOrder.indexOf(step.label);
+                    
+                    if (currentIndex > thisIndex) isPast = true;
+
+                    return (
+                      <div key={step.id} className="flex items-center gap-3 text-sm">
+                        {isPast ? (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-eclipse-green/20 text-eclipse-green">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          </div>
+                        ) : isCurrent ? (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-eclipse-green/30 border-t-eclipse-green animate-spin"></div>
+                        ) : (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-white/30 text-[10px]">
+                            {index + 1}
+                          </div>
+                        )}
+                        <span className={`${isCurrent ? 'text-eclipse-green font-medium' : isPast ? 'text-gray-300' : 'text-gray-500'}`}>
+                          {step.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -446,18 +687,20 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
             <div className="pt-2">
               <Button
                 type="submit"
-                className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-medium rounded-xl py-6 border-none shadow-lg shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+                className="w-full bg-eclipse-green hover:bg-eclipse-green text-white font-medium rounded-sm py-6 border-none shadow-lg shadow-eclipse-green/20 transition-all hover:scale-[1.02]"
                 disabled={
                   loading ||
                 !isEndTimeInFuture ||
                   (oracleKind === 'manual' && question.length < 10) ||
-                  (oracleKind === 'pythPrice' && Number(targetPriceUsd || 0) <= 0)
+                  (oracleKind === 'pythPrice' &&
+                    (Number(targetPriceUsd || 0) <= 0 ||
+                      (priceQuestion.trim() || priceMarketQuestion).length < 10))
                 }
               >
                 {loading ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    {loadingStep || 'Creating on Devnet...'}
+                    Creating Market...
                   </>
                 ) : (
                   <>
@@ -482,20 +725,20 @@ function ProofLink({ label, signature }: { label: string; signature?: string }) 
   if (!signature) {
     return (
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-emerald-500/80">{label}</span>
-        <span className="font-medium text-emerald-500/50">Pending</span>
+        <span className="text-eclipse-green/80">{label}</span>
+        <span className="font-medium text-eclipse-green/50">Pending</span>
       </div>
     );
   }
 
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-emerald-300">{label}</span>
+      <span className="text-eclipse-green">{label}</span>
       <a
         href={explorerTxUrl(signature)}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+        className="inline-flex items-center gap-1 font-medium text-eclipse-green hover:text-eclipse-green transition-colors"
       >
         View tx
         <ExternalLink className="h-3 w-3" />
@@ -529,4 +772,11 @@ function formatRelativeDuration(diffMs: number): string {
   }
 
   return `${seconds}s from now`;
+}
+
+function roundTargetPrice(value: number): string {
+  if (value >= 1000) return Math.round(value).toString();
+  if (value >= 100) return value.toFixed(1);
+  if (value >= 1) return value.toFixed(2);
+  return value.toFixed(4);
 }

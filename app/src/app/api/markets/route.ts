@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
 import { marketTracker } from '@/services/marketTracker';
+import {
+  DEFAULT_PRICE_FEED_SYMBOL,
+  isSupportedPriceFeedSymbol,
+  type PriceFeedSymbol,
+} from '@/lib/priceFeeds';
 
 export async function GET() {
   try {
@@ -28,6 +33,11 @@ export async function GET() {
   }
 }
 
+const priceFeedSymbolSchema = z.custom<PriceFeedSymbol>(
+  (value) => typeof value === 'string' && isSupportedPriceFeedSymbol(value),
+  'Unsupported price feed'
+);
+
 const createMarketSchema = z.object({
   question: z.string().min(10, 'Question must be at least 10 characters'),
   initialLiquidity: z.number().min(1000000, 'Minimum 1 token (1000000 units)'),
@@ -36,7 +46,7 @@ const createMarketSchema = z.object({
   collateralMint: z.string().optional(),
   useCustomOracle: z.boolean().optional().default(false),
   oracleKind: z.enum(['manual', 'pythPrice']).optional().default('pythPrice'),
-  oracleAsset: z.enum(['SOLUSD', 'BTCUSD']).optional().default('SOLUSD'),
+  oracleAsset: priceFeedSymbolSchema.optional().default(DEFAULT_PRICE_FEED_SYMBOL),
   targetPrice: z.string().optional().default('0'),
   priceDirection: z.enum(['above', 'below']).optional().default('above'),
   oracleFeed: z.string().optional(),

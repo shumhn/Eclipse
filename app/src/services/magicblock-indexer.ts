@@ -35,6 +35,13 @@ import {
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
 
+import {
+  DEFAULT_PRICE_FEED_SYMBOL,
+  PRICE_FEED_BY_MAGICBLOCK_ACCOUNT,
+  PRICE_FEED_BY_SYMBOL,
+  type PriceFeedAsset,
+  type PriceFeedSymbol,
+} from '@/lib/priceFeeds';
 import { findKeypairByPublicKey, getDefaultKeypair, LoadedKeypair } from './solana-wallets';
 
 const PROGRAM_ID = new PublicKey('79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t');
@@ -45,12 +52,12 @@ const MAGICBLOCK_READ_RPC_URL = 'https://devnet.magicblock.app';
 const ER_SPONSOR_BUFFER_LAMPORTS = 100_000;
 const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 64);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
-const MAGICBLOCK_SOL_USD_FEED = new PublicKey('ENYwebBThHzmzwPLAQvCucUTsjyfBSZdD9ViXksS4jPu');
-const MAGICBLOCK_BTC_USD_FEED = new PublicKey('71wtTRDY8Gxgw56bXFt2oc6qeAbTxzStdNiC425Z51sr');
-const MAGICBLOCK_PRICE_FEEDS: Record<'SOLUSD' | 'BTCUSD', PublicKey> = {
-  SOLUSD: MAGICBLOCK_SOL_USD_FEED,
-  BTCUSD: MAGICBLOCK_BTC_USD_FEED,
-};
+const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEntries(
+  Object.entries(PRICE_FEED_BY_SYMBOL).map(([symbol, feed]) => [
+    symbol,
+    new PublicKey(feed.magicBlockFeed),
+  ])
+) as Record<PriceFeedSymbol, PublicKey>;
 
 const MarketLayout = borsh.struct([
   borsh.u64('id'),
@@ -163,7 +170,7 @@ export interface NormalizedMarket {
     creatorPosition?: string;
   };
   priceMarket?: {
-    asset: 'SOL/USD' | 'BTC/USD' | 'Unknown';
+    asset: PriceFeedAsset | 'Unknown';
     targetPriceUsd: number | null;
     currentPriceUsd: number | null;
     resolverPriceUsd: number | null;
@@ -650,7 +657,7 @@ export class MagicBlockIndexer {
     endTime: number;
     initialLiquidity: bigint;
     oracleKind?: 'manual' | 'pythPrice';
-    oracleAsset?: 'SOLUSD' | 'BTCUSD';
+    oracleAsset?: PriceFeedSymbol;
     targetPrice?: bigint;
     priceDirection?: 'above' | 'below';
     oracleFeed?: string;
@@ -702,7 +709,7 @@ export class MagicBlockIndexer {
           params.priceDirection === 'below' ? { below: {} } : { above: {} },
           params.oracleFeed
             ? new PublicKey(params.oracleFeed)
-            : MAGICBLOCK_PRICE_FEEDS[params.oracleAsset ?? 'SOLUSD']
+            : MAGICBLOCK_PRICE_FEEDS[params.oracleAsset ?? DEFAULT_PRICE_FEED_SYMBOL]
         )
       : program.methods.createPrivateMarket(
           params.question,
@@ -815,7 +822,7 @@ export class MagicBlockIndexer {
     endTime: number;
     initialLiquidity: bigint;
     oracleKind?: 'manual' | 'pythPrice';
-    oracleAsset?: 'SOLUSD' | 'BTCUSD';
+    oracleAsset?: PriceFeedSymbol;
     targetPrice?: bigint;
     priceDirection?: 'above' | 'below';
     oracleFeed?: string;
@@ -862,7 +869,7 @@ export class MagicBlockIndexer {
           params.priceDirection === 'below' ? { below: {} } : { above: {} },
           params.oracleFeed
             ? new PublicKey(params.oracleFeed)
-            : MAGICBLOCK_PRICE_FEEDS[params.oracleAsset ?? 'SOLUSD']
+            : MAGICBLOCK_PRICE_FEEDS[params.oracleAsset ?? DEFAULT_PRICE_FEED_SYMBOL]
         )
       : program.methods.createPrivateMarket(
           params.question,
@@ -1392,7 +1399,10 @@ export class MagicBlockIndexer {
               resolver: oracle.keypair.publicKey,
               config: configPda,
               market: marketPubkey,
-              oracleFeed: new PublicKey(market.account.oracle_feed || MAGICBLOCK_SOL_USD_FEED.toBase58()),
+              oracleFeed: new PublicKey(
+                market.account.oracle_feed ||
+                  MAGICBLOCK_PRICE_FEEDS[DEFAULT_PRICE_FEED_SYMBOL].toBase58()
+              ),
               magicProgram: MAGIC_PROGRAM_ID,
               magicContext: MAGIC_CONTEXT_ID,
             })
@@ -1910,11 +1920,9 @@ export class MagicBlockIndexer {
     };
   }
 
-  private getPriceMarketAssetLabel(feed?: string): 'SOL/USD' | 'BTC/USD' | 'Unknown' {
+  private getPriceMarketAssetLabel(feed?: string): PriceFeedAsset | 'Unknown' {
     if (!feed) return 'Unknown';
-    if (feed === MAGICBLOCK_SOL_USD_FEED.toBase58()) return 'SOL/USD';
-    if (feed === MAGICBLOCK_BTC_USD_FEED.toBase58()) return 'BTC/USD';
-    return 'Unknown';
+    return PRICE_FEED_BY_MAGICBLOCK_ACCOUNT[feed]?.asset ?? 'Unknown';
   }
 
   private rawPriceToUsd(raw?: string): number | null {

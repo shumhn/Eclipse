@@ -1,6 +1,7 @@
 /**
  * API client for Private Prediction Markets (MagicBlock TEE)
  */
+import type { PriceFeedAsset, PriceFeedSymbol } from './priceFeeds';
 
 // Use relative URLs - Next.js rewrites will proxy to the actual API
 const API_BASE = '';
@@ -31,7 +32,7 @@ export interface Market {
   tracked?: boolean;
   proof?: MarketProof;
   priceMarket?: {
-    asset: 'SOL/USD' | 'BTC/USD' | 'Unknown';
+    asset: PriceFeedAsset | 'Unknown';
     targetPriceUsd: number | null;
     currentPriceUsd: number | null;
     resolverPriceUsd: number | null;
@@ -193,7 +194,7 @@ export interface CreateMarketParams {
   collateralMint?: string;
   useCustomOracle?: boolean;
   oracleKind?: 'manual' | 'pythPrice';
-  oracleAsset?: 'SOLUSD' | 'BTCUSD';
+  oracleAsset?: PriceFeedSymbol;
   targetPrice?: string;
   priceDirection?: 'above' | 'below';
   oracleFeed?: string;
@@ -207,7 +208,7 @@ export interface CreateMarketResult {
   endTime: string;
   isCustomOracle: boolean;
   oracleKind?: 'manual' | 'pythPrice';
-  oracleAsset?: 'SOLUSD' | 'BTCUSD';
+  oracleAsset?: PriceFeedSymbol;
   priceDirection?: 'above' | 'below';
   targetPrice?: string;
   oracleFeed?: string;
@@ -285,6 +286,32 @@ export async function finalizeCreateMarket(
   });
   const json = await parseApiResponse<CreateMarketResult>(res, 'Failed to finalize market creation');
   return json.data!;
+}
+
+export interface LivePriceFeed {
+  symbol: PriceFeedSymbol;
+  asset: PriceFeedAsset;
+  label: string;
+  baseAsset: string;
+  quoteAsset: 'USD';
+  magicBlockFeed: string;
+  pythLazerId: number;
+  exponent: number;
+  hermesFeedId: string;
+  tradingViewSymbol: string;
+  currentPriceUsd: number | null;
+  publishTime: number | null;
+}
+
+export async function fetchLivePriceFeeds(): Promise<LivePriceFeed[]> {
+  const res = await fetch(`${API_BASE}/api/oracles/price-feeds`, {
+    cache: 'no-store',
+  });
+  const json = await parseApiResponse<LivePriceFeed[]>(
+    res,
+    'Failed to fetch live price feeds'
+  );
+  return json.data || [];
 }
 
 // Tracked Markets API
