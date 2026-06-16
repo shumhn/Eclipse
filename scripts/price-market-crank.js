@@ -15,6 +15,7 @@ const LIMIT = Number(process.env.CRANK_LIMIT || 10);
 const REQUEST_TIMEOUT_MS = Number(process.env.CRANK_REQUEST_TIMEOUT_MS || 30000);
 const CRANK_SECRET = process.env.CRANK_SECRET || '';
 const ONCE = process.argv.includes('--once') || process.env.CRANK_ONCE === 'true';
+const UNIFIED = process.argv.includes('--unified') || process.env.CRANK_UNIFIED === 'true';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,6 +63,22 @@ async function callEndpoint(path, label) {
 
 async function tick() {
   const timestamp = new Date().toISOString();
+
+  if (UNIFIED) {
+    try {
+      const result = await callEndpoint('/api/crank/run', 'crank');
+      console.log(
+        `[${timestamp}] CRANK    resolved=${result.resolve?.resolved ?? 0}/${result.resolve?.attempted ?? 0} settleMarkets=${result.settle?.candidateMarkets ?? 0}`
+      );
+      return;
+    } catch (error) {
+      const message = error?.name === 'AbortError'
+        ? `crank timed out after ${REQUEST_TIMEOUT_MS}ms`
+        : error?.message || String(error);
+      console.error(`[${timestamp}] CRANK error: ${message}`);
+      return;
+    }
+  }
 
   // ── Phase 1: Resolve expired markets ──────────────────────────
   try {
@@ -123,6 +140,7 @@ async function main() {
       `interval=${POLL_INTERVAL_MS}ms`,
       `limit=${LIMIT}`,
       `mode=${ONCE ? 'once' : 'loop'}`,
+      `endpoint=${UNIFIED ? 'unified' : 'phased'}`,
       `auth=${CRANK_SECRET ? 'enabled' : 'disabled'}`,
     ].join(' ')
   );
