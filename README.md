@@ -216,6 +216,29 @@ The crank does two jobs:
 
 On Vercel, the cron route can be protected with `CRANK_SECRET` / `CRON_SECRET`.
 
+For second-level resolution, run the crank as an always-on worker. The repo includes a Render worker blueprint:
+
+```text
+render.yaml
+```
+
+The worker runs:
+
+```bash
+npm run crank:price -- --unified
+```
+
+Recommended worker env:
+
+```bash
+APP_URL=https://eclipse-predict.vercel.app
+CRANK_SECRET=<same secret as the Vercel crank endpoint>
+CRANK_INTERVAL_MS=1000
+CRANK_LIMIT=10
+CRANK_REQUEST_TIMEOUT_MS=55000
+CRANK_UNIFIED=true
+```
+
 Manual markets can still be resolved by the configured oracle/admin path.
 
 ---
