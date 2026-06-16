@@ -1,0 +1,9 @@
+.git
+.next
+node_modules
+target
+app/.next
+app/node_modules
+app/tsconfig.tsbuildinfo
+*.log
+.DS_Store
