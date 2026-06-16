@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "eclipse-crank",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-16",
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "APP_URL": "https://eclipse-predict.vercel.app",
+    "CRANK_LIMIT": "10"
+  }
+}

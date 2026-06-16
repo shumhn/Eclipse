@@ -214,30 +214,32 @@ The crank does two jobs:
 1. Resolve expired price markets by reading the selected live feed at close.
 2. Settle resolved positions when settlement is available.
 
-On Vercel, the cron route can be protected with `CRANK_SECRET` / `CRON_SECRET`.
+On Vercel, the crank route is protected with `CRANK_SECRET` / `CRON_SECRET`.
 
-For second-level resolution, run the crank as an always-on worker. The repo includes a Render worker blueprint:
+For a free hosted crank, use the Cloudflare Worker in:
 
 ```text
-render.yaml
+workers/crank
 ```
 
-The worker runs:
+It triggers once per minute and calls the Vercel crank endpoint:
+
+```text
+https://eclipse-predict.vercel.app/api/crank/run
+```
+
+Cloudflare Worker setup:
 
 ```bash
-npm run crank:price -- --unified
+cd workers/crank
+npm install
+npx wrangler secret put CRANK_SECRET
+npm run deploy
 ```
 
-Recommended worker env:
+Use the same `CRANK_SECRET` value that is configured on Vercel.
 
-```bash
-APP_URL=https://eclipse-predict.vercel.app
-CRANK_SECRET=<same secret as the Vercel crank endpoint>
-CRANK_INTERVAL_MS=1000
-CRANK_LIMIT=10
-CRANK_REQUEST_TIMEOUT_MS=55000
-CRANK_UNIFIED=true
-```
+There is also a GitHub Actions fallback in `.github/workflows/crank.yml`, which runs every 5 minutes.
 
 Manual markets can still be resolved by the configured oracle/admin path.
 
