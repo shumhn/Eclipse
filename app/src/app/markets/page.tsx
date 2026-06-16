@@ -1,38 +1,54 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Search, Filter, RefreshCw, TrendingUp, Shield, Plus, Zap, AlertCircle } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { AlertCircle, CalendarClock, ChevronDown, Clock3, Plus, RefreshCw, Search, Zap, Shield, Layers } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import MarketCard from '@/components/MarketCard';
 import CreateMarketModal from '@/components/CreateMarketModal';
-import { Button } from '@/components/ui/button';
+import CryptoIcon from '@/components/CryptoIcon';
 import { fetchMarkets, fetchTrackedMarkets, Market, isMarketActive, CreateMarketResult } from '@/lib/api';
 
 type FilterType = 'all' | 'active' | 'resolved';
+type AssetFilter = 'all' | 'BTC' | 'ETH' | 'SOL' | 'JUP' | 'DOGE' | 'OTHER';
 
-export default function MarketsPage() {
+
+const assetFilters: Array<{ label: AssetFilter; display: string }> = [
+  { label: 'BTC', display: 'BTC' },
+  { label: 'ETH', display: 'ETH' },
+  { label: 'SOL', display: 'SOL' },
+  { label: 'JUP', display: 'JUP' },
+  { label: 'DOGE', display: 'DOGE' },
+  { label: 'OTHER', display: 'Others' },
+];
+
+function MarketsContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
   const [markets, setMarkets] = useState<Market[]>([]);
   const [trackedAddresses, setTrackedAddresses] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState(searchParams?.get('q') || '');
+  const [filter, setFilter] = useState<FilterType>('active');
+  const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   const loadMarkets = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all markets and tracked info in parallel
       const [allData, trackedData] = await Promise.all([
         fetchMarkets(),
         fetchTrackedMarkets().catch(() => null),
       ]);
-      setMarkets(allData);
+      
+      const validMarkets = allData.filter(m => !m.account.question.toLowerCase().includes('smoke'));
+      setMarkets(validMarkets);
 
-      // Track which markets are ours
       if (trackedData?.markets) {
-        setTrackedAddresses(new Set(trackedData.markets.map(m => m.publicKey)));
+        setTrackedAddresses(new Set(trackedData.markets.map((m) => m.publicKey)));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load markets');
@@ -45,180 +61,206 @@ export default function MarketsPage() {
     loadMarkets();
   }, [loadMarkets]);
 
+  useEffect(() => {
+    const q = searchParams?.get('q');
+    if (q !== null && q !== undefined) {
+      setSearchQuery(q);
+    }
+  }, [searchParams]);
+
+  const handleSearchChange = (val: string) => {
+    setSearchQuery(val);
+    const newParams = new URLSearchParams(searchParams?.toString() || '');
+    if (val) {
+      newParams.set('q', val);
+    } else {
+      newParams.delete('q');
+    }
+    router.push(`/markets?${newParams.toString()}`);
+  };
+
   const handleMarketCreated = (result: CreateMarketResult) => {
-    // Add the new market address to tracked set
-    setTrackedAddresses(prev => new Set(Array.from(prev).concat([result.marketAddress])));
-    // Reload markets to get the new one
+    setTrackedAddresses((prev) => new Set(Array.from(prev).concat([result.marketAddress])));
     loadMarkets();
   };
 
-  // Filter and search markets
+  const assetCounts = useMemo(() => {
+    const counts: Record<AssetFilter, number> = {
+      all: markets.length,
+      BTC: 0,
+      ETH: 0,
+      SOL: 0,
+      JUP: 0,
+      DOGE: 0,
+      OTHER: 0,
+    };
+
+    for (const market of markets) {
+      const asset = getMarketAsset(market);
+      if (asset in counts && asset !== 'OTHER') {
+        counts[asset as AssetFilter] += 1;
+      } else {
+        counts.OTHER += 1;
+      }
+    }
+
+    return counts;
+  }, [markets]);
+
   const filteredMarkets = markets
     .filter((market) => {
       if (filter === 'active') return isMarketActive(market);
       if (filter === 'resolved') return market.account.resolved;
       return true;
     })
+    .filter((market) => {
+      if (assetFilter === 'all') return true;
+      return getMarketAsset(market) === assetFilter;
+    })
     .filter((market) =>
       market.account.question.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    .slice(0, 50); // Limit to 50 for performance
+    .slice(0, 50);
 
-  const activeCount = markets.filter(m => isMarketActive(m)).length;
-  const resolvedCount = markets.filter((m) => m.account.resolved).length;
+  const activeCount = markets.filter((market) => isMarketActive(market)).length;
+  const resolvedCount = markets.filter((market) => market.account.resolved).length;
 
   return (
     <div className="min-h-screen bg-eclipse-bg text-eclipse-text-main">
       <Navbar />
 
-      <main className="pt-32 pb-16 px-4 relative z-10">
-        <div className="max-w-[1440px] mx-auto">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-            <div>
-              <h1 className="font-light tracking-tight text-5xl mb-3 text-white">Markets</h1>
-              <p className="text-eclipse-text-muted text-sm flex items-center gap-2">
-                Powered by{' '}
-                <span className="inline-flex items-center gap-1.5 text-eclipse-green font-medium bg-eclipse-green/10 border border-eclipse-green/20 px-2.5 py-1 rounded-full shadow-[0_0_10px_rgba(43,168,89,0.1)]">
-                  <Zap className="w-3.5 h-3.5" /> MagicBlock Rollups
-                </span>
-              </p>
-            </div>
+      <main className="relative z-10 border-t border-eclipse-border/70 pt-24">
+        <div className="mx-auto grid max-w-[1560px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="hidden min-h-[calc(100vh-6rem)] border-r border-eclipse-border/80 px-8 py-8 lg:block">
+            <MarketSidebar
+              filter={filter}
+              setFilter={setFilter}
+              assetFilter={assetFilter}
+              setAssetFilter={setAssetFilter}
+              assetCounts={assetCounts}
+              activeCount={activeCount}
+              resolvedCount={resolvedCount}
+            />
+          </aside>
 
-            <div className="flex items-center gap-4">
-              <button
-                className={`px-5 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl font-light hover:bg-white/10 transition-all duration-300 flex items-center gap-2 text-sm ${loading ? 'opacity-70 cursor-wait' : ''}`}
-                onClick={loadMarkets}
-                disabled={loading}
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
-              <button
-                className="px-5 py-2.5 bg-eclipse-green text-black hover:bg-[#3dd176] rounded-xl font-medium transition-all duration-300 shadow-[0_0_15px_rgba(43,168,89,0.3)] hover:shadow-[0_0_25px_rgba(43,168,89,0.5)] flex items-center gap-2 text-sm"
-                onClick={() => setShowCreateModal(true)}
-              >
-                <Plus className="w-4 h-4" />
-                Create Market
-              </button>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              label="Total Markets"
-              value={markets.length.toLocaleString()}
-            />
-            <StatCard
-              label="Active"
-              value={activeCount.toLocaleString()}
-            />
-            <StatCard
-              label="Resolved"
-              value={resolvedCount.toLocaleString()}
-            />
-            <StatCard
-              label="Network"
-              value="Devnet"
-              highlight
-            />
-          </div>
-
-          {/* Search and Filter */}
-          <div className="flex flex-col md:flex-row gap-4 mb-10">
-            <div className="flex-1 relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-white/40 group-focus-within:text-eclipse-green transition-colors" />
+          <section className="px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+            <div className="mb-7 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-[#f2f4f7] flex items-center gap-3">
+                  Predictions
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-eclipse-green/20 bg-eclipse-green/10 px-2.5 py-0.5 text-[11px] font-bold text-eclipse-green uppercase tracking-wider">
+                    <Shield className="h-3 w-3" aria-hidden="true" />
+                    Private
+                  </span>
+                </h1>
+                <div className="mt-2 flex items-center gap-2 text-[13px] text-eclipse-text-muted">
+                  <span>Powered by</span>
+                  <img src="/magicblock-logo.svg" alt="MagicBlock" className="h-3.5 opacity-90" />
+                  <span>for zero MEV & absolute privacy.</span>
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder="Search markets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/40 font-light focus:outline-none focus:border-eclipse-green/50 focus:ring-1 focus:ring-eclipse-green/50 transition-all shadow-inner"
-              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <label className="relative block sm:w-80">
+                  <span className="sr-only">Search markets</span>
+                  <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Search markets..."
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full sm:w-64 pl-10 pr-4 py-2 bg-[#101216] border border-white/10 rounded-xl text-sm text-white placeholder:text-gray-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] focus:outline-none focus:border-eclipse-green/60 focus:ring-1 focus:ring-eclipse-green/40 transition-colors"
+                />
+              </div>  </label>
+
+                <button
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-eclipse-border bg-[#101216] px-4 text-sm font-semibold text-eclipse-text-main hover:border-eclipse-green/50 hover:bg-[#15181d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green"
+                  onClick={loadMarkets}
+                  disabled={loading}
+                >
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+                  Refresh
+                </button>
+
+                <button
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-eclipse-green px-5 text-sm font-bold text-black hover:bg-eclipse-green-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Create
+                </button>
+              </div>
             </div>
 
-            <div className="flex gap-2 p-1.5 bg-white/5 rounded-xl border border-white/10">
-              {(['all', 'active', 'resolved'] as FilterType[]).map((f) => (
+            <div className="mb-6 flex gap-2 overflow-x-auto pb-1 lg:hidden">
+              {(['all', 'active', 'resolved'] as FilterType[]).map((item) => (
                 <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`
-                    px-6 py-2 rounded-lg text-sm font-light tracking-wide capitalize transition-all duration-300
-                    ${
-                      filter === f
-                          ? 'bg-eclipse-green text-black shadow-[0_0_15px_rgba(43,168,89,0.3)]'
-                          : 'text-white/60 hover:text-white hover:bg-white/5'
-                    }
-                  `}
+                  key={item}
+                  onClick={() => setFilter(item)}
+                  className={`h-10 rounded-full border px-4 text-sm font-semibold capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green ${
+                    filter === item
+                      ? 'border-eclipse-green bg-eclipse-green text-black'
+                      : 'border-eclipse-border bg-[#101216] text-eclipse-text-muted'
+                  }`}
                 >
-                  {f}
+                  {item}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Error State */}
-          {error && (
-            <div className="bg-eclipse-red/10 border border-eclipse-red/20 rounded-lg p-4 mb-8">
-              <p className="text-eclipse-red text-sm font-medium">{error}</p>
-              <button onClick={loadMarkets} className="mt-2 text-xs font-semibold text-eclipse-red hover:underline">
-                Try Again
-              </button>
-            </div>
-          )}
-
-          {/* Loading State */}
-          {loading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-eclipse-panel border border-eclipse-border rounded-lg p-4 h-64 animate-pulse flex flex-col"
-                >
-                  <div className="h-4 bg-eclipse-border rounded w-16 mb-4" />
-                  <div className="h-10 bg-eclipse-border rounded w-full mb-4 flex-1" />
-                  <div className="h-16 bg-eclipse-border rounded w-full mt-auto" />
+            {error && (
+              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-eclipse-red/30 bg-eclipse-red/10 p-4 text-sm text-eclipse-red">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-semibold">{error}</p>
+                  <button onClick={loadMarkets} className="mt-2 font-bold underline underline-offset-4">
+                    Try again
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Markets Grid */}
-          {!loading && filteredMarkets.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredMarkets.map((market) => (
-                <MarketCard
-                  key={market.publicKey}
-                  market={market}
-                  isTracked={trackedAddresses.has(market.publicKey)}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Empty State */}
-          {!loading && filteredMarkets.length === 0 && (
-            <div className="text-center py-20 bg-eclipse-panel border border-eclipse-border rounded-lg">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 bg-eclipse-border">
-                 <Search className="w-6 h-6 text-eclipse-text-muted" />
               </div>
-              <h3 className="font-semibold text-eclipse-text-main mb-1">
-                No markets found
-              </h3>
-              <p className="text-sm text-eclipse-text-muted">
-                {searchQuery
-                  ? 'Try a different search term'
-                  : 'No markets match the current filter'}
-              </p>
-            </div>
-          )}
+            )}
+
+            {loading && (
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="min-h-64 animate-pulse rounded-2xl border border-eclipse-border bg-[#101216] p-5"
+                  >
+                    <div className="mb-5 h-8 w-28 rounded-full bg-white/10" />
+                    <div className="mb-6 h-6 w-2/3 rounded bg-white/10" />
+                    <div className="mb-5 h-12 rounded bg-white/10" />
+                    <div className="h-12 rounded bg-white/10" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loading && filteredMarkets.length > 0 && (
+              <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                {filteredMarkets.map((market) => (
+                  <MarketCard
+                    key={market.publicKey}
+                    market={market}
+                    isTracked={trackedAddresses.has(market.publicKey)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {!loading && filteredMarkets.length === 0 && (
+              <div className="rounded-2xl border border-eclipse-border bg-[#101216] px-6 py-16 text-center">
+                <Search className="mx-auto mb-4 h-9 w-9 text-eclipse-text-muted" aria-hidden="true" />
+                <h3 className="text-lg font-bold text-white">No predictions found</h3>
+                <p className="mt-2 text-sm text-eclipse-text-muted">
+                  Try another asset, status, or search query.
+                </p>
+              </div>
+            )}
+          </section>
         </div>
       </main>
 
-      {/* Create Market Modal */}
       <CreateMarketModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
@@ -228,23 +270,146 @@ export default function MarketsPage() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  highlight,
+function MarketSidebar({
+  filter,
+  setFilter,
+  assetFilter,
+  setAssetFilter,
+  assetCounts,
+  activeCount,
+  resolvedCount,
 }: {
-  label: string;
-  value: string;
-  highlight?: boolean;
+  filter: FilterType;
+  setFilter: (filter: FilterType) => void;
+  assetFilter: AssetFilter;
+  setAssetFilter: (filter: AssetFilter) => void;
+  assetCounts: Record<AssetFilter, number>;
+  activeCount: number;
+  resolvedCount: number;
 }) {
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 transition-all hover:bg-white/10 group">
-      <div className="text-xs font-light text-white/60 tracking-widest uppercase mb-2">
-        {label}
+    <div className="sticky top-32 space-y-8 pt-6">      <div className="space-y-3" aria-label="Asset filters">
+        <SidebarAssetButton
+          active={assetFilter === 'all'}
+          asset="ALL"
+          label="All Markets"
+          count={assetCounts.all}
+          onClick={() => setAssetFilter('all')}
+        />
+        {assetFilters.map((item) => (
+          <SidebarAssetButton
+            key={item.label}
+            active={assetFilter === item.label}
+            asset={item.label}
+            label={item.display}
+            count={assetCounts[item.label]}
+            onClick={() => setAssetFilter(item.label)}
+          />
+        ))}
       </div>
-      <p className={`font-light text-4xl tracking-tight ${highlight ? 'text-eclipse-green drop-shadow-[0_0_15px_rgba(43,168,89,0.5)]' : 'text-white'} group-hover:scale-105 origin-left transition-transform duration-300`}>
-        {value}
-      </p>
+
+      <div className="space-y-2 border-t border-eclipse-border pt-7" aria-label="Status filters">
+        <SidebarStatusButton
+          active={filter === 'all'}
+          icon={<CalendarClock className="h-4 w-4" aria-hidden="true" />}
+          label="All"
+          count={assetCounts.all}
+          onClick={() => setFilter('all')}
+        />
+        <SidebarStatusButton
+          active={filter === 'active'}
+          icon={<Clock3 className="h-4 w-4" aria-hidden="true" />}
+          label="Active"
+          count={activeCount}
+          onClick={() => setFilter('active')}
+        />
+        <SidebarStatusButton
+          active={filter === 'resolved'}
+          icon={<Zap className="h-4 w-4" aria-hidden="true" />}
+          label="Resolved"
+          count={resolvedCount}
+          onClick={() => setFilter('resolved')}
+        />
+      </div>
     </div>
+  );
+}
+
+function SidebarAssetButton({
+  active,
+  asset,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  asset: string;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-11 w-full items-center gap-3 rounded-xl px-2 text-left text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green ${
+        active ? 'bg-white/[0.08] text-white' : 'text-[#c8cbd1] hover:bg-white/[0.04] hover:text-white'
+      }`}
+    >
+      {asset === 'ALL' ? (
+        <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-white/10 shadow-sm text-white">
+          <Layers className="h-4 w-4" />
+        </div>
+      ) : (
+        <CryptoIcon asset={asset} size={28} />
+      )}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="text-eclipse-text-muted">({count})</span>
+      <ChevronDown className="h-4 w-4 text-eclipse-text-muted" aria-hidden="true" />
+    </button>
+  );
+}
+
+function SidebarStatusButton({
+  active,
+  icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green ${
+        active ? 'bg-eclipse-green text-black' : 'text-eclipse-text-muted hover:bg-white/5 hover:text-white'
+      }`}
+    >
+      {icon}
+      <span className="flex-1">{label}</span>
+      <span>{count}</span>
+    </button>
+  );
+}
+
+function getMarketAsset(market: Market): AssetFilter {
+  const asset = market.priceMarket?.asset?.toUpperCase() || '';
+  if (asset.includes('BTC')) return 'BTC';
+  if (asset.includes('ETH')) return 'ETH';
+  if (asset.includes('SOL')) return 'SOL';
+  if (asset.includes('JUP') || asset.includes('JUPITER')) return 'JUP';
+  if (asset.includes('DOGE')) return 'DOGE';
+  return 'OTHER';
+}
+
+export default function MarketsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#030608] flex items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-eclipse-green border-t-transparent rounded-full" /></div>}>
+      <MarketsContent />
+    </Suspense>
   );
 }

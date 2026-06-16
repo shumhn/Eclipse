@@ -16,7 +16,9 @@ import TradePanel from "@/components/TradePanel";
 import ClaimPanel from "@/components/ClaimPanel";
 import ResolvePanel from "@/components/ResolvePanel";
 import PriceChart from "@/components/PriceChart";
+import RulesSection from "@/components/RulesSection";
 import MarketCountdown from "@/components/MarketCountdown";
+import CryptoIcon from "@/components/CryptoIcon";
 import { Button } from "@/components/ui/button";
 import {
   calculatePriceFromReserves,
@@ -190,61 +192,12 @@ export default function MarketDetailPage() {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex gap-4 items-start">
                     {/* Asset Icon Box */}
-                    <div className="flex-shrink-0 mt-1">
-                      {market.priceMarket?.asset === "SOL/USD" ? (
-                        <div className="w-12 h-12 rounded-xl bg-[#1A1E23] border border-eclipse-border flex items-center justify-center shadow-lg">
-                          <svg
-                            className="w-7 h-7"
-                            viewBox="0 0 397 311"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z"
-                              fill="url(#sol-grad)"
-                            />
-                            <path
-                              d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z"
-                              fill="url(#sol-grad)"
-                            />
-                            <path
-                              d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"
-                              fill="url(#sol-grad)"
-                            />
-                            <defs>
-                              <linearGradient
-                                id="sol-grad"
-                                x1="0"
-                                y1="0"
-                                x2="397"
-                                y2="311"
-                                gradientUnits="userSpaceOnUse"
-                              >
-                                <stop stopColor="#00FFA3" />
-                                <stop offset="1" stopColor="#DC1FFF" />
-                              </linearGradient>
-                            </defs>
-                          </svg>
-                        </div>
-                      ) : market.priceMarket?.asset === "BTC/USD" ? (
-                        <div className="w-12 h-12 rounded-xl bg-[#F7931A]/10 border border-[#F7931A]/20 flex items-center justify-center shadow-lg">
-                          <svg
-                            className="w-7 h-7"
-                            viewBox="0 0 24 24"
-                            fill="#F7931A"
-                          >
-                            <path d="M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.666 22.038-1.244 15.525.358 9.095 1.96 2.664 8.47-1.247 14.9.355c6.43 1.604 10.34 8.115 8.738 14.548v-.002zm-6.612-4.613c.24-1.59-.976-2.45-2.64-3.03l.54-2.153-1.315-.33-.525 2.107c-.345-.087-.705-.167-1.064-.25l.526-2.127-1.32-.33-.54 2.16c-.285-.067-.565-.132-.84-.2l-1.815-.45-.35 1.407s.975.225.955.236c.53.136.63.486.615.766l-1.22 4.905c-.06.15-.224.373-.59.28.013.02-.956-.24-.956-.24l-.66 1.514 1.71.426.93.242-.54 2.19 1.32.327.54-2.17c.36.1.705.19 1.05.273l-.54 2.154 1.32.33.545-2.19c2.24.427 3.93.257 4.64-1.774.57-1.637-.03-2.58-1.217-3.196.854-.193 1.5-.76 1.68-1.93h.01zm-3.01 4.22c-.404 1.64-3.157.75-4.05.53l.72-2.9c.896.23 3.757.67 3.33 2.37zm.41-4.24c-.37 1.49-2.662.735-3.405.55l.654-2.64c.744.18 3.137.524 2.75 2.084z" />
-                          </svg>
-                        </div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-xl bg-eclipse-panel border border-eclipse-border flex items-center justify-center shadow-lg">
-                          <img
-                            src="/eclipse-logo.svg"
-                            alt="Eclipse"
-                            className="w-6 h-6 opacity-80"
-                          />
-                        </div>
-                      )}
+                    <div className="flex-shrink-0 mt-1 relative z-10 drop-shadow-[0_4px_12px_rgba(0,0,0,0.4)]">
+                      <CryptoIcon 
+                        asset={market.priceMarket?.asset} 
+                        size={48} 
+                        className="rounded-[14px] border border-white/[0.08]" 
+                      />
                     </div>
 
                     {/* Title & Metadata */}
@@ -307,7 +260,7 @@ export default function MarketDetailPage() {
                 </div>
 
                 {/* Price Chart / Visual Placeholder */}
-                <div className="eclipse-card p-6 h-[420px] flex flex-col mb-8 relative border-none bg-[#1C1F26]">
+                <div className="h-[420px] flex flex-col mb-8 relative">
                   {market.account.oracle_kind === "pythPrice" &&
                   market.priceMarket ? (
                     <PriceChart
@@ -369,22 +322,30 @@ export default function MarketDetailPage() {
                   )}
                 </div>
 
+                {/* Rules & Market Context */}
+                <RulesSection
+                  market={market}
+                  isPriceMarket={isPriceMarket}
+                  direction={direction}
+                  targetPrice={targetPrice}
+                  priceRule={priceRule}
+                  createdDate={createdDate}
+                />
+
                 {/* About Section */}
-                <div className="eclipse-card p-6">
-                  <h2 className="font-bold text-lg mb-4 border-b border-eclipse-border pb-4">
-                    About
-                  </h2>
-                  <div className="space-y-4 text-sm text-eclipse-text-muted">
+                <div className="bg-transparent">
+                  <h2 className="font-bold text-lg mb-5 text-white">About</h2>
+                  <div className="space-y-4 text-sm text-white/70 leading-relaxed">
                     {isPriceMarket ? (
                       <p>
-                        This market resolves to <strong>Yes</strong> if{" "}
-                        <strong>
+                        This market resolves to <strong className="text-white">Yes</strong> if{" "}
+                        <strong className="text-white">
                           {market.priceMarket?.asset ?? "the asset price"}
                         </strong>{" "}
-                        is <strong>{direction}</strong>{" "}
-                        <strong>{formatUsdPrice(targetPrice)}</strong> at the
+                        is <strong className="text-white">{direction}</strong>{" "}
+                        <strong className="text-white">{formatUsdPrice(targetPrice)}</strong> at the
                         resolution timestamp. Otherwise it resolves to{" "}
-                        <strong>No</strong>.
+                        <strong className="text-white">No</strong>.
                       </p>
                     ) : (
                       <p>
@@ -393,23 +354,23 @@ export default function MarketDetailPage() {
                       </p>
                     )}
                     {positionsHidden && (
-                      <p className="text-eclipse-text-main p-3 bg-eclipse-panel rounded-lg border border-eclipse-border flex gap-2">
-                        <Shield className="w-5 h-5 text-eclipse-green shrink-0 mt-0.5" />
+                      <div className="text-white/80 p-4 bg-white/[0.03] rounded-lg ring-1 ring-[#16a34a]/20 flex gap-3 items-start">
+                        <Shield className="w-5 h-5 text-[#22c55e] shrink-0 mt-0.5" />
                         <span>
-                          This market is running inside MagicBlock's Ephemeral
+                          This market is running inside MagicBlock&apos;s Ephemeral
                           Rollup (TEE). Your live positions and pool balances
                           are hidden until the oracle resolves the market.
                         </span>
-                      </p>
+                      </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-y-4 mt-6 pt-6 border-t border-eclipse-border text-sm">
+                  <div className="grid grid-cols-2 gap-y-5 mt-6 pt-6 border-t border-white/[0.06] text-sm">
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">
+                      <div className="text-white/40 mb-1 text-xs tracking-wider uppercase">
                         Created By
                       </div>
-                      <div className="text-eclipse-text-main font-mono text-xs flex items-center gap-2">
+                      <div className="text-white font-mono text-xs flex items-center gap-2">
                         {market.account.creator.slice(0, 6)}...
                         {market.account.creator.slice(-4)}
                         <a
@@ -417,15 +378,15 @@ export default function MarketDetailPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          <ExternalLink className="w-3.5 h-3.5 text-eclipse-text-muted hover:text-eclipse-text-main" />
+                          <ExternalLink className="w-3.5 h-3.5 text-white/40 hover:text-white" />
                         </a>
                       </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">
+                      <div className="text-white/40 mb-1 text-xs tracking-wider uppercase">
                         Contract Address
                       </div>
-                      <div className="text-eclipse-text-main font-mono text-xs flex items-center gap-2">
+                      <div className="text-white font-mono text-xs flex items-center gap-2">
                         {market.publicKey.slice(0, 6)}...
                         {market.publicKey.slice(-4)}
                         <a
@@ -433,23 +394,23 @@ export default function MarketDetailPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          <ExternalLink className="w-3.5 h-3.5 text-eclipse-text-muted hover:text-eclipse-text-main" />
+                          <ExternalLink className="w-3.5 h-3.5 text-white/40 hover:text-white" />
                         </a>
                       </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">
+                      <div className="text-white/40 mb-1 text-xs tracking-wider uppercase">
                         Start Date
                       </div>
-                      <div className="text-eclipse-text-main font-medium">
+                      <div className="text-white font-medium">
                         {createdDate.toLocaleDateString()}
                       </div>
                     </div>
                     <div>
-                      <div className="text-eclipse-text-muted mb-1">
+                      <div className="text-white/40 mb-1 text-xs tracking-wider uppercase">
                         End Date
                       </div>
-                      <div className="text-eclipse-text-main font-medium">
+                      <div className="text-white font-medium">
                         {endDate.toLocaleDateString()}
                       </div>
                     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
-import { CheckCircle, Gift, Info, Lock, RefreshCw } from 'lucide-react';
+import { CheckCircle, Trophy, Info, Lock, RefreshCw } from 'lucide-react';
 import { Market, Position, fetchPosition } from '@/lib/api';
 import { prepareSettleTransaction, prepareClaimTransaction } from '@/lib/trading';
 import { getOrFetchTeeAuthToken, signAndSend } from '@/lib/magicblock';
@@ -205,15 +205,15 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
     (isPositionSettled && !hasClaimableWinnings);
 
   return (
-    <div className="bg-eclipse-panel rounded-xl w-full text-eclipse-text-main font-sans border border-eclipse-border shadow-lg overflow-hidden">
-      <div className="bg-gradient-to-r from-eclipse-blue/20 to-eclipse-bg p-5 border-b border-eclipse-border">
+    <div className="eclipse-card overflow-hidden">
+      <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-5 border-b border-white/[0.06]">
         <div className="flex items-center gap-2 mb-2">
-          <Gift className="w-5 h-5 text-eclipse-blue" />
-          <h3 className="font-bold text-lg">Market Resolved</h3>
+          <Trophy className="w-5 h-5 text-eclipse-green drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+          <h3 className="font-bold text-lg text-white tracking-tight">Market Resolved</h3>
         </div>
-        <p className="text-sm text-eclipse-text-muted">
+        <p className="text-sm text-eclipse-text-muted leading-relaxed">
           This market resolved to{' '}
-          <strong className={outcomeStr === 'YES' ? 'text-eclipse-green' : 'text-eclipse-red'}>
+          <strong className={outcomeStr === 'YES' ? 'text-eclipse-green drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]' : 'text-[#f87171] drop-shadow-[0_0_5px_rgba(248,113,113,0.3)]'}>
             {outcomeStr}
           </strong>
           . Your wallet position decides whether there is a payout to claim.
@@ -221,9 +221,9 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
       </div>
 
       <div className="p-5">
-        <div className="flex items-start gap-2 p-3 bg-[#1A1D21] border border-eclipse-border rounded-lg text-xs mb-4">
+        <div className="flex items-start gap-3 p-3.5 bg-eclipse-panel border border-white/5 rounded-xl text-xs mb-5 shadow-inner">
           <Info className="w-4 h-4 text-eclipse-text-muted shrink-0 mt-0.5" />
-          <div className="text-eclipse-text-muted">
+          <div className="text-eclipse-text-muted leading-relaxed">
             {!position
               ? 'Connect the wallet that traded this market. We will check its private position before allowing claim.'
               : !isPositionSettled && canSettleInTee
@@ -237,16 +237,17 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
         </div>
 
         {position && (
-          <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg border border-eclipse-border bg-[#111418] p-3">
-              <div className="text-eclipse-text-muted">Position</div>
-              <div className="font-semibold text-eclipse-text-main">
+          <div className="mb-6 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center">
+              <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1">Position</div>
+              <div className="font-bold text-white tracking-wide">
                 {isPositionSettled ? 'Settled' : 'Needs settlement'}
               </div>
             </div>
-            <div className="rounded-lg border border-eclipse-border bg-[#111418] p-3">
-              <div className="text-eclipse-text-muted">Claimable</div>
-              <div className="font-semibold text-eclipse-text-main">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-eclipse-green/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1 relative z-10">Claimable</div>
+              <div className="font-bold text-eclipse-green tracking-wide relative z-10">
                 {formatUsdc(remainingClaimable)} USDC
               </div>
             </div>
@@ -254,52 +255,57 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
         )}
 
         {error && (
-          <div className="mb-4 text-xs text-eclipse-red p-3 bg-eclipse-red/10 border border-eclipse-red/20 rounded-lg font-medium">
+          <div className="mb-5 text-xs text-[#f87171] p-3.5 bg-[#ef4444]/10 border border-[#ef4444]/20 rounded-xl font-medium">
             {error}
           </div>
         )}
 
         {step === 'success' ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <CheckCircle className="w-12 h-12 text-eclipse-green mb-4" />
-            <h3 className="text-lg font-bold text-eclipse-text-main mb-1">Claim Successful</h3>
+            <div className="w-16 h-16 rounded-full bg-eclipse-green/10 flex items-center justify-center mb-4">
+              <CheckCircle className="w-8 h-8 text-eclipse-green" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-1 tracking-tight">Claim Successful</h3>
             <p className="text-sm text-eclipse-text-muted">
               Your winnings have been transferred to your wallet.
             </p>
           </div>
         ) : step === 'noWinnings' ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
-            <Lock className="w-12 h-12 text-eclipse-text-muted mb-4" />
-            <h3 className="text-lg font-bold text-eclipse-text-main mb-1">No Winnings</h3>
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 border border-white/10">
+              <Lock className="w-8 h-8 text-white/40" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-1 tracking-tight">No Winnings</h3>
             <p className="text-sm text-eclipse-text-muted">
               This wallet has no claimable payout for the resolved outcome.
             </p>
           </div>
         ) : !isConnected ? (
-          <button className="w-full py-3.5 bg-eclipse-blue hover:bg-[#0070DF] text-white font-bold rounded-lg transition-all shadow-[0_4px_14px_0_rgba(0,130,255,0.39)]">
-            Connect Wallet to Check Position
+          <button className="w-full py-4 bg-eclipse-green hover:bg-eclipse-green-light text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(34,197,94,0.2)] hover:shadow-[0_0_30px_rgba(34,197,94,0.4)] active:scale-[0.98] tracking-wide">
+            Connect Wallet
           </button>
         ) : (
           <div className="space-y-3">
             <button
               onClick={handleClaim}
               disabled={buttonDisabled}
-              className={`w-full py-3.5 font-bold rounded-lg transition-all shadow-[0_4px_14px_0_rgba(0,130,255,0.39)] text-white
+              className={`w-full py-4 font-bold rounded-xl transition-all text-sm tracking-wide flex items-center justify-center gap-2
                 ${buttonDisabled
-                  ? 'bg-[#24282D] text-eclipse-text-muted cursor-not-allowed border border-eclipse-border shadow-none'
-                  : 'bg-eclipse-blue hover:bg-[#0070DF]'
+                  ? 'bg-white/[0.03] text-white/30 border border-white/5 cursor-not-allowed'
+                  : 'bg-eclipse-green hover:bg-eclipse-green-light text-black shadow-[0_0_20px_rgba(34,197,94,0.2)] hover:shadow-[0_0_30px_rgba(34,197,94,0.4)] active:scale-[0.98]'
                 }
               `}
             >
+              {buttonDisabled && <Lock className="w-4 h-4 opacity-50" />}
               {buttonLabel}
             </button>
 
             <button
               onClick={loadPosition}
               disabled={positionLoading || loading}
-              className="w-full py-2.5 rounded-lg border border-eclipse-border text-eclipse-text-muted hover:text-eclipse-text-main hover:bg-[#1A1D21] transition-colors text-sm font-semibold flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl border border-white/[0.06] text-eclipse-text-muted hover:text-white hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-center gap-2 group"
             >
-              <RefreshCw className={`w-4 h-4 ${positionLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 text-white/40 group-hover:text-white transition-colors ${positionLoading ? 'animate-spin' : ''}`} />
               Refresh Position
             </button>
           </div>

@@ -11,8 +11,8 @@ const config: Config = {
       colors: {
         'dark': '#0a0a0a',
         'neon-purple': '#8B5CF6',
-        'eclipse-bg': '#141618',
-        'eclipse-panel': '#1B1E22',
+        'eclipse-bg': '#000000',
+        'eclipse-panel': '#0d0e10',
         'eclipse-green': '#2BA859',
         'eclipse-green-light': '#3dd176',
         'eclipse-red': '#E43E4B',
@@ -20,7 +20,7 @@ const config: Config = {
         'eclipse-blue': '#0082FF',
         'eclipse-text-main': '#FFFFFF',
         'eclipse-text-muted': '#A1A1AA',
-        'eclipse-border': '#292C32',
+        'eclipse-border': '#1e2025',
       },
       fontFamily: {
         mono: ['var(--font-mono)'],

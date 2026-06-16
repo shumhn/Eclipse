@@ -180,7 +180,7 @@ export function PhantomWalletButton() {
           {/* Balance Display */}
           <div className="hidden md:flex items-center gap-3 text-xs font-mono bg-white/5 px-4 py-2 rounded-full border border-white/10 text-gray-300">
             <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] shadow-[0_0_8px_rgba(34,197,94,0.8)]" />
               {balances.loading ? "..." : `${balances.sol.toFixed(2)} SOL`}
             </span>
             <span className="text-white/20">|</span>
@@ -199,14 +199,7 @@ export function PhantomWalletButton() {
             <ChevronDown className={`w-4 h-4 transition-transform text-gray-400 ${showDropdown ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Disconnect Button */}
-          <button
-            onClick={() => disconnect()}
-            disabled={isDisconnecting}
-            className="bg-red-500/10 text-red-400 rounded-full px-4 py-2 text-xs font-light border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40 transition-colors disabled:opacity-50"
-          >
-            {isDisconnecting ? "..." : "Disconnect"}
-          </button>
+
         </div>
 
         {/* Dropdown Menu */}
@@ -227,7 +220,7 @@ export function PhantomWalletButton() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-eclipse-text-muted text-sm flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-blue-500" />
+                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-[#22c55e] to-[#4ade80]" />
                     SOL
                   </span>
                   <span className="font-medium text-eclipse-text-main">{balances.sol.toFixed(4)}</span>
@@ -280,12 +273,12 @@ export function PhantomWalletButton() {
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 text-sm transition-colors text-eclipse-text-main"
                 >
-                  <Coins className="w-4 h-4 text-purple-500" />
+                  <Coins className="w-4 h-4 text-[#22c55e]" />
                   <span>SOL Faucet</span>
                   <ExternalLink className="w-3 h-3 ml-auto text-eclipse-text-muted" />
                 </a>
                 <a
-                  href="https://spl-token-faucet.com/?token-name=USDC-Dev"
+                  href="https://faucet.circle.com/"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 text-sm transition-colors text-eclipse-text-main"
@@ -297,8 +290,8 @@ export function PhantomWalletButton() {
               </div>
             </div>
 
-            {/* Explorer Link */}
-            <div className="p-4 pt-0">
+            {/* Explorer Link & Disconnect */}
+            <div className="p-4 pt-0 space-y-2">
               <a
                 href={`https://explorer.solana.com/address/${address}?cluster=devnet`}
                 target="_blank"
@@ -308,6 +301,16 @@ export function PhantomWalletButton() {
                 <span>View on Explorer</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
+              <button
+                onClick={() => {
+                  disconnect();
+                  setShowDropdown(false);
+                }}
+                disabled={isDisconnecting}
+                className="w-full flex items-center justify-center p-2.5 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/40 transition-colors disabled:opacity-50"
+              >
+                {isDisconnecting ? "Disconnecting..." : "Disconnect Wallet"}
+              </button>
             </div>
           </div>
         )}

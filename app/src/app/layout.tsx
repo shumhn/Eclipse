@@ -21,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={font.variable}>
-      <body className={`${font.className} bg-eclipse-bg text-eclipse-text-main font-sans antialiased`}>
+      <body className={`${font.className} bg-black text-eclipse-text-main font-sans antialiased`}>
         <Providers>
           {children}
         </Providers>

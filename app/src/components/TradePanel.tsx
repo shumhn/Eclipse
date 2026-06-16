@@ -179,92 +179,91 @@ export default function TradePanel({
   }
 
   return (
-    <div className="bg-eclipse-panel rounded-xl w-full text-eclipse-text-main font-sans border border-eclipse-border shadow-lg">
+    <div className="bg-transparent w-full text-white font-sans relative">
       {/* Header Tabs */}
-      <div className="flex items-center justify-between px-5 pt-4 border-b border-eclipse-border">
+      <div className="flex items-center justify-between px-5 pt-4 pb-0">
         <div className="flex gap-6">
           <button
-            className={`pb-3 font-semibold text-sm transition-colors relative ${tradeType === 'buy' ? 'text-eclipse-text-main' : 'text-eclipse-text-muted hover:text-eclipse-text-main'}`}
+            className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'buy' ? 'text-white' : 'text-white hover:text-white'}`}
             onClick={() => setTradeType('buy')}
           >
             Buy
-            {tradeType === 'buy' && <div className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-eclipse-text-main rounded-t-full" />}
+            {tradeType === 'buy' && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
+            )}
           </button>
           <button
-            className={`pb-3 font-semibold text-sm transition-colors relative ${tradeType === 'sell' ? 'text-eclipse-text-main' : 'text-eclipse-text-muted hover:text-eclipse-text-main'}`}
+            className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'sell' ? 'text-white' : 'text-white hover:text-white'}`}
             onClick={() => setTradeType('sell')}
           >
             Sell
-            {tradeType === 'sell' && <div className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-eclipse-text-main rounded-t-full" />}
+            {tradeType === 'sell' && (
+              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#ef4444] to-[#f87171]" />
+            )}
           </button>
         </div>
-        <div className="flex items-center gap-1.5 pb-3">
-          <span className="text-xs font-medium text-eclipse-text-muted">Market</span>
-          <Settings className="w-3.5 h-3.5 text-eclipse-text-muted cursor-pointer hover:text-eclipse-text-main transition-colors" />
+        <div className="flex items-center gap-2 pb-3">
+          <span className="text-[11px] font-medium text-white tracking-widest uppercase">Market</span>
+          <Settings className="w-3.5 h-3.5 text-white cursor-pointer hover:text-white hover:rotate-90 transition-all duration-300" />
         </div>
       </div>
 
-      <div className="p-5">
+      {/* Thin separator */}
+      <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+
+      <div className="px-5 pt-4 pb-4">
         {/* Outcome Selector */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-3 mb-4">
           <button
             onClick={() => setSide('yes')}
-            className={`flex-1 py-3 px-4 rounded-lg flex justify-between items-center transition-all font-semibold ${
+            className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
               side === 'yes'
-                ? 'bg-eclipse-green text-white shadow-[0_0_10px_rgba(43,168,89,0.3)] border border-transparent'
-                : 'bg-[#24282D] border border-transparent text-eclipse-text-muted hover:bg-[#2C3137]'
+                ? 'bg-[#16a34a]/20 text-[#4ade80] ring-1 ring-[#16a34a]/40'
+                : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
             }`}
           >
             <span>Yes</span>
-            <span className={side === 'yes' ? 'text-white font-bold' : 'text-eclipse-text-muted'}>{(prices.yes * 100).toFixed(1)}¢</span>
+            <span className="font-bold tabular-nums">{(prices.yes * 100).toFixed(1)}¢</span>
           </button>
           <button
             onClick={() => setSide('no')}
-            className={`flex-1 py-3 px-4 rounded-lg flex justify-between items-center transition-all font-semibold ${
+            className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
               side === 'no'
-                ? 'bg-eclipse-red text-white shadow-[0_0_10px_rgba(228,62,75,0.3)] border border-transparent'
-                : 'bg-[#24282D] border border-transparent text-eclipse-text-muted hover:bg-[#2C3137]'
+                ? 'bg-[#ef4444]/20 text-[#f87171] ring-1 ring-[#ef4444]/40'
+                : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
             }`}
           >
             <span>No</span>
-            <span className={side === 'no' ? 'text-white font-bold' : 'text-eclipse-text-muted'}>{(prices.no * 100).toFixed(1)}¢</span>
+            <span className="font-bold tabular-nums">{(prices.no * 100).toFixed(1)}¢</span>
           </button>
         </div>
 
         {/* Amount Input */}
-        <div className="mb-6 relative group">
-          <div className="flex justify-between items-center text-sm mb-2">
-            <span className="text-eclipse-text-muted font-medium">Amount</span>
+        <div className="mb-4 relative group">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-white font-medium text-xs tracking-widest uppercase">Amount</span>
             <div className="flex items-center gap-3">
-              <a 
-                href="https://spl-token-faucet.com/?token-name=USDC-Dev" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-eclipse-blue hover:underline flex items-center gap-1"
-              >
-                Get Devnet USDC <ExternalLink className="w-3 h-3" />
-              </a>
-              <span className="text-eclipse-text-muted font-medium">USDC</span>
+              <span className="text-[11px] text-white font-semibold tracking-widest uppercase">USDC</span>
             </div>
           </div>
-          <div className="relative bg-[#1A1D21] border border-eclipse-border rounded-lg p-1 group-focus-within:border-eclipse-text-muted transition-colors">
-            <div className="flex items-center h-14 px-3">
-              <span className="text-eclipse-text-muted font-bold text-xl mr-1">$</span>
+          <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
+            <div className="flex items-center h-12 px-4">
+              <span className="text-white/60 font-bold text-2xl mr-1">$</span>
               <input
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0"
-                className="w-full bg-transparent text-eclipse-text-main font-bold text-3xl outline-none placeholder:text-eclipse-text-muted/30"
+                className="w-full bg-transparent text-white font-bold text-2xl outline-none placeholder:text-white/10 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </div>
             {/* Quick Amounts */}
-            <div className="flex justify-end gap-1.5 px-3 pb-3">
+            <div className="flex justify-center gap-2 px-4 pb-3">
               {[1, 5, 10, 100].map((val) => (
                 <button
                   key={val}
                   onClick={() => setAmount(val.toString())}
-                  className="px-3 py-1 bg-[#24282D] hover:bg-[#2C3137] rounded-full text-xs font-semibold text-eclipse-text-muted transition-colors"
+                  className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150"
                 >
                   +${val}
                 </button>
@@ -275,82 +274,89 @@ export default function TradePanel({
 
         {/* TEE Note */}
         {positionsHidden && (
-          <div className="flex items-start gap-2 mb-6 p-3 bg-[#1A1D21] border border-eclipse-border rounded-lg text-xs">
-             <Shield className="w-4 h-4 text-eclipse-green shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 mb-4 p-3 bg-[#16a34a]/[0.06] ring-1 ring-[#16a34a]/20 rounded-lg">
+             <Shield className="w-4 h-4 text-[#22c55e] shrink-0 mt-0.5" />
              <div>
-               <div className="font-semibold text-eclipse-green">Shielded inside TEE</div>
-               <div className="text-eclipse-text-muted leading-tight mt-0.5">Your position is hidden until market closes.</div>
+               <div className="font-semibold text-[13px] text-[#4ade80]">Shielded inside TEE</div>
+               <div className="text-white text-xs leading-relaxed mt-0.5">Your position is hidden until market closes.</div>
              </div>
           </div>
         )}
 
         {/* Estimate Details */}
-        <div className="space-y-2.5 mb-6">
-          <div className="flex justify-between text-xs">
-            <span className="text-eclipse-text-muted font-medium">Avg price</span>
-            <span className="text-eclipse-text-main font-semibold">{(currentPrice * 100).toFixed(1)}¢</span>
+        <div className="space-y-2.5 mb-4">
+          <div className="flex justify-between text-[13px]">
+            <span className="text-white">Avg price</span>
+            <span className="text-white font-medium tabular-nums">{(currentPrice * 100).toFixed(1)}¢</span>
           </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-eclipse-text-muted font-medium">Estimated shares</span>
-            <span className="text-eclipse-text-main font-semibold">{estimatedShares}</span>
+          <div className="h-px bg-white/[0.04]" />
+          <div className="flex justify-between text-[13px]">
+            <span className="text-white/80">Estimated shares</span>
+            <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
           </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-eclipse-text-muted font-medium">Potential return</span>
-            <span className="text-eclipse-green font-semibold">${potentialReturn} ({amount ? ((parseFloat(potentialReturn) / parseFloat(amount) - 1) * 100).toFixed(2) : '0.00'}%)</span>
+          <div className="h-px bg-white/[0.04]" />
+          <div className="flex justify-between text-[13px]">
+            <span className="text-white/80">Potential return</span>
+            <span className="text-[#4ade80] font-semibold tabular-nums">${potentialReturn} ({amount ? ((parseFloat(potentialReturn) / parseFloat(amount) - 1) * 100).toFixed(2) : '0.00'}%)</span>
           </div>
         </div>
 
         {error && (
-          <div className="mb-6 text-xs text-eclipse-red p-3 bg-eclipse-red/10 border border-eclipse-red/20 rounded-lg font-medium">
+          <div className="mb-6 text-xs text-[#f87171] p-3 bg-[#ef4444]/10 ring-1 ring-[#ef4444]/20 rounded-lg font-medium">
             {error}
           </div>
         )}
 
         {/* Trade Action */}
         {!isConnected ? (
-          <button className="w-full py-3.5 bg-eclipse-blue hover:bg-[#0070DF] text-white font-bold rounded-lg transition-all shadow-[0_4px_14px_0_rgba(0,130,255,0.39)]">
+          <button className="w-full py-4 bg-white text-black font-bold rounded-lg transition-all duration-200 text-sm tracking-wide hover:shadow-[0_0_30px_rgba(255,255,255,0.12)] active:scale-[0.98]">
              Connect Wallet
           </button>
         ) : (
           <button
             onClick={handleTrade}
             disabled={loading || !amount}
-            className={`w-full py-3.5 font-bold rounded-lg transition-all
-              ${loading || !amount 
-                ? 'bg-[#24282D] text-eclipse-text-muted cursor-not-allowed border border-eclipse-border' 
-                : 'bg-eclipse-blue hover:bg-[#0070DF] text-white shadow-[0_4px_14px_0_rgba(0,130,255,0.39)]'
-              }
-            `}
+            className="w-full py-4 font-bold rounded-lg transition-all duration-200 text-sm tracking-wide bg-white text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.12)] active:scale-[0.98]"
           >
-            {loading ? 'Processing...' : 'Trade'}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Processing...
+              </span>
+            ) : 'Trade'}
           </button>
         )}
       </div>
       
       {/* Success Modal/View */}
       {success && txSignature && (
-        <div className="absolute inset-0 bg-eclipse-panel z-10 flex flex-col p-6 rounded-lg">
+        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col p-6 rounded-xl">
           <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <CheckCircle className="w-12 h-12 text-eclipse-green mb-4" />
-            <h3 className="text-xl font-bold text-eclipse-text-main mb-2">Trade Submitted</h3>
-            <p className="text-sm text-eclipse-text-muted mb-6">
+            <div className="w-16 h-16 rounded-full bg-[#16a34a]/20 flex items-center justify-center mb-5">
+              <CheckCircle className="w-8 h-8 text-[#4ade80]" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Trade Submitted</h3>
+            <p className="text-sm text-white/80 mb-6">
               Your trade has been placed successfully in the TEE.
             </p>
             <a
               href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-eclipse-blue hover:underline flex items-center gap-1 mb-6"
+              className="text-xs text-[#60a5fa] hover:text-[#93c5fd] transition-colors flex items-center gap-1 mb-6"
             >
               View Transaction <ExternalLink className="w-3 h-3" />
             </a>
           </div>
           <div className="flex gap-3">
-             <button onClick={() => setSuccess(false)} className="flex-1 py-3 border border-eclipse-border text-eclipse-text-main rounded-lg font-semibold hover:bg-eclipse-border/50">
+             <button onClick={() => setSuccess(false)} className="flex-1 py-3 ring-1 ring-white/[0.1] text-white rounded-lg font-semibold hover:bg-white/[0.05] transition-all">
                Trade Again
              </button>
              <Link href="/portfolio" className="flex-1">
-                <button className="w-full py-3 bg-eclipse-blue text-white rounded-lg font-semibold hover:bg-[#2482B6]">
+                <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
                   View Portfolio
                 </button>
              </Link>
