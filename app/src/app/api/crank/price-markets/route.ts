@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
+import { isAuthorizedCrankRequest } from '../_lib/auth';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const crankSchema = z.object({
   limit: z.number().int().positive().max(50).optional(),
@@ -8,15 +13,11 @@ const crankSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const configuredSecret = process.env.CRANK_SECRET;
-    if (configuredSecret) {
-      const providedSecret = req.headers.get('x-crank-secret');
-      if (providedSecret !== configuredSecret) {
-        return NextResponse.json(
-          { success: false, error: 'Unauthorized crank request' },
-          { status: 401 }
-        );
-      }
+    if (!isAuthorizedCrankRequest(req)) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized crank request' },
+        { status: 401 }
+      );
     }
 
     const bodyText = await req.text();

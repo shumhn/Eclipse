@@ -1,23 +1,15 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
+import { isAuthorizedCrankRequest } from '../_lib/auth';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const crankRunSchema = z.object({
   limit: z.number().int().positive().max(50).optional(),
 });
-
-function isAuthorized(req: Request): boolean {
-  const configuredSecret = process.env.CRANK_SECRET || process.env.CRON_SECRET;
-  if (!configuredSecret) return true;
-
-  const headerSecret = req.headers.get('x-crank-secret');
-  const authHeader = req.headers.get('authorization');
-  const bearerSecret = authHeader?.startsWith('Bearer ')
-    ? authHeader.slice('Bearer '.length)
-    : null;
-
-  return headerSecret === configuredSecret || bearerSecret === configuredSecret;
-}
 
 async function parseLimit(req: Request): Promise<number | undefined> {
   if (req.method === 'GET') {
@@ -35,7 +27,7 @@ async function parseLimit(req: Request): Promise<number | undefined> {
 
 async function runCrank(req: Request) {
   try {
-    if (!isAuthorized(req)) {
+    if (!isAuthorizedCrankRequest(req)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized crank request' },
         { status: 401 }
@@ -45,8 +37,18 @@ async function runCrank(req: Request) {
     const limit = await parseLimit(req);
     const startedAt = new Date().toISOString();
 
+    console.log(`[crank] started limit=${limit ?? 'default'} at=${startedAt}`);
+
     const resolve = await magicblockService.autoResolveExpiredPriceMarkets({ limit });
     const settle = await magicblockService.autoSettleResolvedPositions({ limit });
+
+    console.log(
+      [
+        '[crank] finished',
+        `resolved=${resolve.resolved}/${resolve.attempted}`,
+        `settleMarkets=${settle.candidateMarkets}`,
+      ].join(' ')
+    );
 
     return NextResponse.json({
       success: true,

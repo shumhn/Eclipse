@@ -44,7 +44,12 @@ async function callEndpoint(path, label) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(CRANK_SECRET ? { 'x-crank-secret': CRANK_SECRET } : {}),
+        ...(CRANK_SECRET
+          ? {
+              authorization: `Bearer ${CRANK_SECRET}`,
+              'x-crank-secret': CRANK_SECRET,
+            }
+          : {}),
       },
       body: JSON.stringify({ limit: LIMIT }),
       signal: controller.signal,
