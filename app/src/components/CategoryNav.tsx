@@ -6,11 +6,11 @@ import { TrendingUp, Trophy } from 'lucide-react';
 
 const CATEGORIES = [
   { name: 'Trending', href: '/markets', icon: <TrendingUp className="w-4 h-4 mr-1.5 text-white/70" />, highlight: true },
-  { name: 'World Cup', href: '/markets?category=world-cup', icon: <Trophy className="w-4 h-4 mr-1.5 text-yellow-500" />, highlight: true, category: 'world-cup' },
+  { name: 'World Cup', icon: <Trophy className="w-4 h-4 mr-1.5 text-yellow-500" />, highlight: true, disabled: true },
   { name: 'Breaking', href: '/markets', highlight: true },
   { type: 'separator' },
   { name: 'Politics', href: '/markets' },
-  { name: 'Sports', href: '/markets?category=world-cup', category: 'world-cup' },
+  { name: 'Sports', href: '/markets' },
   { name: 'Crypto', href: '/markets?category=crypto', category: 'crypto' },
   { name: 'Esports', href: '/markets' },
   { name: 'Iran', href: '/markets' },
@@ -37,6 +37,18 @@ export default function CategoryNav() {
             return <div key={idx} className="w-px h-4 bg-white/10" />;
           }
           const active = cat.category ? cat.category === activeCategory : false;
+          if ((cat as any).disabled) {
+            return (
+              <div
+                key={cat.name}
+                className="flex items-center text-gray-300 hover:text-white transition-colors cursor-pointer select-none"
+              >
+                {cat.icon}
+                {cat.name}
+              </div>
+            );
+          }
+
           return (
             <Link
               key={cat.name}

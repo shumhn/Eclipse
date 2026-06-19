@@ -145,7 +145,7 @@ function MarketsContent() {
     <div className="min-h-screen bg-eclipse-bg text-eclipse-text-main">
       <Navbar />
 
-      <main className="relative z-10 border-t border-eclipse-border/70 pt-24">
+      <main className="relative z-10 border-t border-eclipse-border/70 pt-32">
         <div className="mx-auto grid max-w-[1560px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="hidden min-h-[calc(100vh-6rem)] border-r border-eclipse-border/80 px-8 py-8 lg:block">
             <MarketSidebar

@@ -50,6 +50,7 @@ const Navbar = () => {
             {/* Navigation Links */}
             <div className="hidden lg:flex items-center gap-8 border-l border-white/10 pl-8">
               <NavLink href="/markets">Markets</NavLink>
+              <NavLink href="/portfolio">Portfolio</NavLink>
               <FutureNavLink>Docs</FutureNavLink>
             </div>
           </div>
@@ -75,7 +76,7 @@ const Navbar = () => {
             <PhantomWalletButton />
           </div>
         </div>
-      </div>
+        </div>
       </div>
       <Suspense fallback={null}>
         <CategoryNav />
@@ -87,7 +88,7 @@ const Navbar = () => {
 const NavLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
   <Link
     href={href}
-    className="text-sm font-light text-gray-400 hover:text-white transition-colors tracking-wide"
+    className="text-sm font-medium text-gray-400 hover:text-white transition-colors"
   >
     {children}
   </Link>
@@ -97,7 +98,7 @@ const FutureNavLink = ({ children }: { children: React.ReactNode }) => (
   <button
     type="button"
     aria-disabled="true"
-    className="text-sm font-light text-gray-400 hover:text-white transition-colors tracking-wide cursor-default"
+    className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-default"
   >
     {children}
   </button>

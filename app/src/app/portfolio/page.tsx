@@ -34,14 +34,6 @@ function formatShares(raw?: string) {
   });
 }
 
-function dominantSide(position: Position | null) {
-  const yes = position ? BigInt(position.yesShares || '0') : BigInt(0);
-  const no = position ? BigInt(position.noShares || '0') : BigInt(0);
-
-  if (yes === BigInt(0) && no === BigInt(0)) return 'Not bought yet';
-  if (yes >= no) return 'Yes';
-  return 'No';
-}
 
 function PortfolioContent() {
   const searchParams = useSearchParams();
@@ -53,6 +45,7 @@ function PortfolioContent() {
   const [entries, setEntries] = useState<PortfolioEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'active' | 'resolved' | 'unspent'>('active');
 
   const loadPortfolio = useCallback(async () => {
     if (!walletAddress) {
@@ -130,11 +123,24 @@ function PortfolioContent() {
     );
   });
 
+  const filteredEntries = useMemo(() => {
+    return entries.filter(({ market, position }) => {
+      const yes = BigInt(position?.yesShares || '0');
+      const no = BigInt(position?.noShares || '0');
+      const available = BigInt(position?.collateralAvailable || '0');
+
+      if (filter === 'active') return !market.account.resolved && (yes > 0 || no > 0);
+      if (filter === 'resolved') return market.account.resolved && (yes > 0 || no > 0);
+      if (filter === 'unspent') return available > 0 && yes === BigInt(0) && no === BigInt(0);
+      return false; 
+    });
+  }, [entries, filter]);
+
   return (
     <div className="min-h-screen bg-eclipse-bg text-eclipse-text-main">
       <Navbar />
 
-      <main className="px-4 pb-16 pt-28">
+      <main className="px-4 pb-16 pt-36">
         <div className="mx-auto max-w-[1120px]">
           <Link
             href={marketId ? `/markets/${marketId}` : '/markets'}
@@ -179,16 +185,21 @@ function PortfolioContent() {
 
           {walletAddress && (
             <>
-              <div className="mb-6 grid gap-4 md:grid-cols-4">
-                <StatCard label="USDC moved into TEE" value={formatUsdc(totals.collateral.toString())} />
-                <StatCard label="Unspent in TEE" value={formatUsdc(totals.available.toString())} />
-                <StatCard label="Yes shares" value={formatShares(totals.yes.toString())} />
-                <StatCard label="No shares" value={formatShares(totals.no.toString())} />
+              <div className="mb-2 grid gap-4 md:grid-cols-4">
+                <StatCard label="Total USDC Deposited" value={formatUsdc(totals.collateral.toString())} />
+                <StatCard label="Unspent USDC" value={formatUsdc(totals.available.toString())} />
+                <StatCard label="Yes Shares Owned" value={formatShares(totals.yes.toString())} />
+                <StatCard label="No Shares Owned" value={formatShares(totals.no.toString())} />
               </div>
+              <p className="mb-6 text-xs text-eclipse-text-muted/70">
+                Note: Shares are bought at a discount (less than $1). You can own more shares than the total USDC you deposited. 1 winning share pays exactly $1.00 USDC.
+              </p>
 
               {hasParkedFunds && (
                 <div className="mb-6 rounded-xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">
-                  Your USDC reached the private TEE position, but no Yes/No shares were bought for this market yet. Use Trade Again with an amount up to the unspent TEE balance.
+                  {entries.some(e => e.market.account.resolved && BigInt(e.position?.collateralAvailable || '0') > 0 && BigInt(e.position?.yesShares || '0') === BigInt(0) && BigInt(e.position?.noShares || '0') === BigInt(0)) 
+                    ? "You have unspent USDC in resolved markets. It is perfectly safe — it will be fully refunded to your wallet when you click Claim on the market page."
+                    : "Your USDC reached the private TEE position, but no Yes/No shares were bought for this market yet. Use Trade Again with an amount up to the unspent TEE balance."}
                 </div>
               )}
 
@@ -198,21 +209,37 @@ function PortfolioContent() {
                 </div>
               )}
 
+              <div className="mb-6 flex gap-2">
+                {(['active', 'resolved', 'unspent'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      filter === f
+                        ? 'bg-white text-black'
+                        : 'bg-white/[0.04] text-white/70 hover:bg-white/[0.08] hover:text-white'
+                    }`}
+                  >
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
+
               {loading ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-eclipse-text-muted">
                   Loading private positions...
                 </div>
-              ) : entries.length === 0 ? (
+              ) : filteredEntries.length === 0 ? (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
                   <EyeOff className="mx-auto mb-4 h-10 w-10 text-eclipse-text-muted" />
-                  <h2 className="text-xl font-bold text-white">No private position found</h2>
+                  <h2 className="text-xl font-bold text-white">No private positions found</h2>
                   <p className="mt-2 text-sm text-eclipse-text-muted">
-                    If you just traded, wait a few seconds and refresh. TEE trades are private and only readable by your wallet flow.
+                    Try changing your filter settings, or if you just traded, wait a few seconds and refresh.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {entries.map(({ market, position }) => (
+                  {filteredEntries.map(({ market, position }) => (
                     <Link
                       key={market.publicKey}
                       href={`/markets/${market.publicKey}`}
@@ -239,11 +266,10 @@ function PortfolioContent() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 text-right md:min-w-[360px] md:grid-cols-4">
-                          <MiniStat label="Side" value={dominantSide(position)} />
-                          <MiniStat label="TEE funds" value={formatUsdc(position?.collateralDeposited)} />
-                          <MiniStat label="Yes" value={formatShares(position?.yesShares)} />
-                          <MiniStat label="No" value={formatShares(position?.noShares)} />
+                        <div className="flex flex-wrap items-center justify-end gap-6 md:gap-10">
+                          <MiniStat label="USDC Deposited" value={formatUsdc(position?.collateralDeposited)} />
+                          <MiniStat label="Yes Shares" value={formatShares(position?.yesShares)} />
+                          <MiniStat label="No Shares" value={formatShares(position?.noShares)} />
                         </div>
                       </div>
                     </Link>
@@ -269,7 +295,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="flex flex-col items-center">
       <div className="text-[11px] font-semibold uppercase tracking-wide text-eclipse-text-muted">{label}</div>
       <div className="mt-1 text-sm font-bold text-white">{value}</div>
     </div>

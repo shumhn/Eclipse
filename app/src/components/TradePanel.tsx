@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
-import { Settings, CheckCircle, Shield, Copy, Check, Eye } from 'lucide-react';
+import { Settings, CheckCircle, Shield, Copy, Check, Eye, EyeOff, ArrowRight, ExternalLink } from 'lucide-react';
 import { MarketPrices, Position } from '@/lib/api';
 import {
   getOrFetchTeeAuthToken,
   delegatePrivatePosition,
+  delegateTopupReceipt,
   preparePositionTransaction,
   preparePrivateTradeTransaction,
   prepareTradeTransaction,
@@ -59,8 +60,19 @@ export default function TradePanel({
   const solanaAccount = accounts?.find((a) => a.addressType === AddressType.solana);
   const walletAddress = solanaAccount?.address || '';
   const teeProofFailed = Boolean(teeProof?.err);
-  const hasExistingPrivateTrade = positionsHidden && Boolean(existingPosition?.delegated);
   const existingPositionUrl = `/portfolio?market=${encodeURIComponent(marketAddress)}`;
+  const privateBalanceLamports = existingPosition
+    ? BigInt(existingPosition.collateralAvailable || '0')
+    : BigInt(0);
+  const yesSharesLamports = existingPosition
+    ? BigInt(existingPosition.yesShares || '0')
+    : BigInt(0);
+  const noSharesLamports = existingPosition
+    ? BigInt(existingPosition.noShares || '0')
+    : BigInt(0);
+  const hasExistingPrivatePosition = positionsHidden && Boolean(existingPosition?.delegated);
+  const hasPrivateExposure = yesSharesLamports > BigInt(0) || noSharesLamports > BigInt(0);
+  const formatUsdcUnits = (units: bigint) => (Number(units) / 1_000_000).toFixed(2);
 
   const formatTradeError = (message: string) => {
     if (message.includes('Missing token query param')) {
@@ -83,7 +95,7 @@ export default function TradePanel({
     }
 
     if (message.includes('Insufficient delegated collateral available for private trade')) {
-      return 'Your wallet has USDC, but this market already has a delegated TEE position and the current devnet program cannot add more wallet USDC into that same position yet. Use the remaining amount already moved into this market, or upgrade the program to support auto top-up.';
+      return 'This private position needs more USDC moved into MagicBlock TEE before this trade can execute. Try again so the app can top up and trade in one private flow.';
     }
 
     return message;
@@ -168,51 +180,107 @@ export default function TradePanel({
     setSuccess(false);
 
     try {
+      const amountUsdc = parseFloat(amount);
+      const amountLamports = BigInt(Math.round(amountUsdc * 1_000_000));
+
       let signature: string;
       const teeToken = positionsHidden ? await getTeeToken() : undefined;
 
       if (positionsHidden) {
-        let prepared;
+        let prepared: { transaction: string; positionAddress?: string; sendTo?: string } | undefined;
+        let topupReceiptAddress: string | undefined;
+        let topupNonce: string | undefined;
 
-        try {
-          prepared = await preparePrivateTradeTransaction({
-            marketAddress,
-            side,
-            amountUsdc: parseFloat(amount),
-            walletAddress,
-          }, teeToken);
-        } catch (privateErr) {
-          const privateMessage = privateErr instanceof Error ? privateErr.message : String(privateErr);
-          if (!needsPrivatePositionSetup(privateMessage)) {
-            throw privateErr;
-          }
-
+        const setupAndDelegate = async () => {
           const setup = await preparePositionTransaction({
             marketAddress,
-            amountUsdc: parseFloat(amount),
+            amountUsdc,
             walletAddress,
           });
+
           await signAndSend(
             setup.transaction,
             (tx) => phantom.signTransaction(tx),
             { sendTo: 'base' }
           );
 
+          if (setup.topupReceiptAddress && setup.topupNonce) {
+            await delegateTopupReceipt({
+              marketAddress,
+              walletAddress,
+              nonce: setup.topupNonce,
+            });
+            topupReceiptAddress = setup.topupReceiptAddress;
+            topupNonce = setup.topupNonce;
+            // Give PER time to see the newly delegated receipt
+            await new Promise((r) => setTimeout(r, 2000));
+            return;
+          }
+
           await delegatePrivatePosition({
             marketAddress,
             walletAddress,
           });
+          // Give PER time to see the newly delegated position
+          await new Promise((r) => setTimeout(r, 2000));
+        };
 
-          prepared = await preparePrivateTradeTransaction({
-            marketAddress,
-            side,
-            amountUsdc: parseFloat(amount),
-            walletAddress,
-          }, teeToken);
+        // For repeat trades: position is already delegated but balance is
+        // insufficient → topup path. Also covers edge case where balance
+        // data is stale (always topup if we have an existing delegated
+        // position and don't have enough).
+        const needsTopup =
+          existingPosition?.delegated && privateBalanceLamports < amountLamports;
+
+        if (needsTopup) {
+          await setupAndDelegate();
         }
 
+        const attemptPrepare = async (retries = 2): Promise<typeof prepared> => {
+          try {
+            return await preparePrivateTradeTransaction({
+              marketAddress,
+              side,
+              amountUsdc,
+              walletAddress,
+              topupReceiptAddress,
+              topupNonce,
+            }, teeToken);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+
+            // If the private position isn't set up yet, do the full setup
+            if (needsPrivatePositionSetup(msg)) {
+              await setupAndDelegate();
+              return preparePrivateTradeTransaction({
+                marketAddress,
+                side,
+                amountUsdc,
+                walletAddress,
+                topupReceiptAddress,
+                topupNonce,
+              }, teeToken);
+            }
+
+            // If it's a collateral/receipt error and we have retries, wait and retry
+            // (PER may not have seen the delegated receipt yet)
+            if (retries > 0 && (
+              msg.includes('Insufficient') ||
+              msg.includes('receipt') ||
+              msg.includes('6008')
+            )) {
+              await new Promise((r) => setTimeout(r, 2500));
+              return attemptPrepare(retries - 1);
+            }
+
+            throw err;
+          }
+        };
+
+        prepared = await attemptPrepare();
+
         signature = await signAndSend(
-          prepared.transaction,
+          prepared!.transaction,
           (tx) => phantom.signTransaction(tx),
           { sendTo: 'ephemeral', ephemeralToken: teeToken }
         );
@@ -220,7 +288,7 @@ export default function TradePanel({
         const prepared = await prepareTradeTransaction({
           marketAddress,
           side,
-          amountUsdc: parseFloat(amount),
+          amountUsdc,
           walletAddress,
         });
 
@@ -246,70 +314,6 @@ export default function TradePanel({
   const currentPrice = side === 'yes' ? prices.yes : prices.no;
   const estimatedShares = amount ? (parseFloat(amount) / currentPrice).toFixed(2) : '0.00';
   const potentialReturn = amount ? (parseFloat(amount) / currentPrice).toFixed(2) : '0.00';
-
-  if (hasExistingPrivateTrade && !success) {
-    return (
-      <div className="bg-transparent w-full text-white font-sans relative min-h-[560px]">
-        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col p-6 rounded-xl">
-          <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <div className="w-16 h-16 rounded-full bg-[#16a34a]/20 flex items-center justify-center mb-5">
-              <CheckCircle className="w-8 h-8 text-[#4ade80]" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">Trade Submitted</h3>
-            <p className="text-sm text-white/80 mb-6">
-              Your private trade was submitted to MagicBlock TEE/PER.
-            </p>
-
-            <div className="w-full text-left mb-6 rounded-xl border border-[#16a34a]/25 bg-[#16a34a]/10 p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <div>
-                  <div className="text-sm font-bold text-[#4ade80]">TEE Trade Proof</div>
-                  <div className="text-[11px] text-white/50">Verified with MagicBlock TEE/PER position</div>
-                </div>
-                <span className="rounded-full bg-[#16a34a]/20 px-2.5 py-1 text-[11px] font-semibold text-[#4ade80]">
-                  Finalized
-                </span>
-              </div>
-
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between gap-3">
-                  <span className="text-white/50">RPC</span>
-                  <span className="text-white/80 font-mono">devnet-tee.magicblock.app</span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-white/50">Position</span>
-                  <span className="text-white/80 font-mono">
-                    {existingPosition?.publicKey.slice(0, 6)}...{existingPosition?.publicKey.slice(-4)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-white/50">Error</span>
-                  <span className="text-white/80 font-mono">None</span>
-                </div>
-                <div className="pt-2 border-t border-white/10">
-                  <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2 text-left">
-                    <span className="truncate font-mono text-[11px] text-white/70">
-                      {existingPosition?.publicKey}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <Link href={existingPositionUrl} className="w-full">
-            <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
-              View My Trade
-            </button>
-          </Link>
-
-          {positionLoading && (
-            <p className="text-xs text-white/40 text-center mt-3">Refreshing private position...</p>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   if (!tradingEnabled) {
     return (
@@ -348,9 +352,16 @@ export default function TradePanel({
             )}
           </button>
         </div>
-        <div className="flex items-center gap-2 pb-3">
-          <span className="text-[11px] font-medium text-white tracking-widest uppercase">Market</span>
-          <Settings className="w-3.5 h-3.5 text-white cursor-pointer hover:text-white hover:rotate-90 transition-all duration-300" />
+        <div className="flex items-center gap-2 pb-3 justify-end w-full">
+          {hasExistingPrivatePosition && (
+            <Link
+              href={existingPositionUrl}
+              className="group flex items-center gap-1.5 text-[11px] font-medium text-[#4ade80] hover:text-[#22c55e] tracking-wide uppercase transition-colors"
+            >
+              My Position
+              <ExternalLink className="w-3.5 h-3.5 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-300" />
+            </Link>
+          )}
         </div>
       </div>
 
@@ -425,9 +436,10 @@ export default function TradePanel({
              <div>
                <div className="font-semibold text-[13px] text-[#4ade80]">Shielded inside TEE</div>
                <div className="text-white text-xs leading-relaxed mt-0.5">Your position is hidden until market closes.</div>
-             </div>
+              </div>
           </div>
         )}
+
 
         {/* Estimate Details */}
         <div className="space-y-2.5 mb-4">
@@ -547,11 +559,23 @@ export default function TradePanel({
               </div>
             ) : null}
           </div>
-          <Link href={`/portfolio?market=${marketAddress}`} className="w-full">
-            <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
-              View My Trade
+          <div className="w-full flex items-center gap-3 mt-auto">
+            <Link href={`/portfolio?market=${marketAddress}`} className="flex-1">
+              <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
+                View Trade
+              </button>
+            </Link>
+            <button
+              onClick={() => {
+                setSuccess(false);
+                setTxSignature(null);
+                setAmount('');
+              }}
+              className="flex-1 py-3 bg-transparent text-white border border-white/20 rounded-lg font-semibold hover:bg-white/5 transition-all"
+            >
+              Trade Again
             </button>
-          </Link>
+          </div>
         </div>
       )}
     </div>
