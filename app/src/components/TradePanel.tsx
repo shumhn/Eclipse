@@ -546,18 +546,56 @@ export default function TradePanel({
                     </div>
                   )}
                   <div className="pt-2 border-t border-white/10">
+                    <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
+                      <a 
+                        href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="truncate font-mono text-[11px] text-[#4ade80] hover:text-[#22c55e] hover:underline flex items-center gap-1.5"
+                        title="View on Solana Explorer"
+                      >
+                        {txSignature}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={copySignature}
+                        className="hover:bg-black/45 p-1 rounded transition-colors"
+                        title="Copy Signature"
+                      >
+                        {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full text-left mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-sm font-bold text-white mb-3">Transaction Receipt</div>
+                <div className="pt-2 border-t border-white/10">
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
+                    <a 
+                      href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="truncate font-mono text-[11px] text-[#4ade80] hover:text-[#22c55e] hover:underline flex items-center gap-1.5"
+                      title="View on Solana Explorer"
+                    >
+                      {txSignature}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
                     <button
                       type="button"
                       onClick={copySignature}
-                      className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2 text-left hover:bg-black/45 transition-colors"
+                      className="hover:bg-black/45 p-1 rounded transition-colors"
+                      title="Copy Signature"
                     >
-                      <span className="truncate font-mono text-[11px] text-white/70">{txSignature}</span>
                       {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
                     </button>
                   </div>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
           <div className="w-full flex items-center gap-3 mt-auto">
             <Link href={`/portfolio?market=${marketAddress}`} className="flex-1">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
-import { CheckCircle, Trophy, Info, Lock, RefreshCw } from 'lucide-react';
+import { CheckCircle, Trophy, Info, Lock, RefreshCw, ExternalLink } from 'lucide-react';
 import { Market, Position, fetchPosition } from '@/lib/api';
 import { prepareSettleTransaction, prepareClaimTransaction } from '@/lib/trading';
 import { getOrFetchTeeAuthToken, signAndSend } from '@/lib/magicblock';
@@ -41,6 +41,7 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<ClaimStep>('idle');
+  const [claimSignature, setClaimSignature] = useState<string | null>(null);
   const canSettleInTee = Boolean(market.delegated);
 
   const loadPosition = async () => {
@@ -170,12 +171,13 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
         walletAddress,
       });
 
-      await signAndSend(
+      const signature = await signAndSend(
         claimSetup.transaction,
         (tx) => phantom.signTransaction(tx),
         { sendTo: 'base' }
       );
 
+      setClaimSignature(signature);
       setStep('success');
       await loadPosition();
       onClaimComplete?.();
@@ -275,9 +277,28 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
               <CheckCircle className="w-8 h-8 text-eclipse-green" />
             </div>
             <h3 className="text-lg font-bold text-white mb-1 tracking-tight">Claim Successful</h3>
-            <p className="text-sm text-eclipse-text-muted">
+            <p className="text-sm text-eclipse-text-muted mb-4">
               Your winnings have been transferred to your wallet.
             </p>
+            {claimSignature && (
+              <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-sm font-bold text-white mb-3">Transaction Receipt</div>
+                <div className="pt-2 border-t border-white/10">
+                  <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
+                    <a 
+                      href={`https://explorer.solana.com/tx/${claimSignature}?cluster=devnet`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="truncate font-mono text-[11px] text-[#4ade80] hover:text-[#22c55e] hover:underline flex items-center gap-1.5"
+                      title="View on Solana Explorer"
+                    >
+                      {claimSignature}
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : step === 'noWinnings' ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
