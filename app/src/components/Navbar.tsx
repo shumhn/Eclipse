@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { Search } from 'lucide-react';
 
 const PhantomWalletButton = dynamic(
@@ -77,7 +77,9 @@ const Navbar = () => {
         </div>
       </div>
       </div>
-      <CategoryNav />
+      <Suspense fallback={null}>
+        <CategoryNav />
+      </Suspense>
     </nav>
   );
 };

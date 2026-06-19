@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Gift, Bookmark } from 'lucide-react';
+import { Gift, Bookmark, Trophy } from 'lucide-react';
 import { Market, calculatePriceFromReserves, isMarketActive } from '@/lib/api';
 import CryptoIcon from '@/components/CryptoIcon';
 
@@ -13,6 +13,7 @@ interface MarketCardProps {
 export default function MarketCard({ market, isTracked = false }: MarketCardProps) {
   const positionsHidden = market.positionsHidden ?? false;
   const isPriceMarket = market.account.oracle_kind === 'pythPrice';
+  const isSportsMarket = Boolean(market.sportsMarket);
   
   const prices = positionsHidden
     ? { yes: 0.5, no: 0.5 }
@@ -32,7 +33,9 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
   const direction = market.priceMarket?.direction === 'above' ? '↑' : '↓';
 
   // Capitalize the first letter for display
-  const assetDisplay = asset === 'Unknown' ? 'General' : 
+  const assetDisplay = isSportsMarket
+    ? market.sportsMarket?.competition || 'World Cup'
+    : asset === 'Unknown' ? 'General' :
     (asset.charAt(0).toUpperCase() + asset.slice(1).toLowerCase());
 
   return (
@@ -46,7 +49,13 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
         {/* Header: Icon + Question */}
         <div className="flex items-start gap-4 mb-6">
           <div className="shrink-0">
-            <CryptoIcon asset={asset === 'Unknown' ? 'SOL' : asset} size={42} />
+            {isSportsMarket ? (
+              <div className="flex h-[42px] w-[42px] items-center justify-center rounded-[6px] bg-yellow-500/15 text-yellow-400 shadow-sm">
+                <Trophy className="h-5 w-5" aria-hidden="true" />
+              </div>
+            ) : (
+              <CryptoIcon asset={asset === 'Unknown' ? 'SOL' : asset} size={42} />
+            )}
           </div>
           <h3 className="font-medium text-white/95 text-[16px] leading-snug flex-1 pt-1">
             {market.account.question}
@@ -57,7 +66,11 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
         <div className="flex items-center justify-between mb-6">
           {/* Target Price */}
           <div className="text-white font-normal text-[15px] flex items-center gap-2 tracking-wide">
-            {isPriceMarket && targetLabel ? (
+            {isSportsMarket ? (
+              <span className="text-gray-300">
+                {market.sportsMarket?.homeTeam} vs {market.sportsMarket?.awayTeam}
+              </span>
+            ) : isPriceMarket && targetLabel ? (
               <>
                 <span className="text-[#a1a1aa] text-[15px] -mt-0.5">{direction}</span>
                 <span>{targetLabel}</span>

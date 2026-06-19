@@ -5,6 +5,7 @@
  * Markets show immediately without waiting for CORE SDK to index them.
  */
 
+import type { SportsMarketMetadata } from '@/lib/sports';
 import { NormalizedMarket } from './magicblock-indexer';
 
 export interface TrackedMarket {
@@ -24,6 +25,7 @@ export interface TrackedMarket {
   privateStateInitializationSignature?: string | null;
   resolveSignature?: string | null;
   commitSignature?: string | null;
+  sportsMarket?: SportsMarketMetadata;
   updatedAt: number;
   // Computed fields
   yesProbability: number;
@@ -46,6 +48,7 @@ export interface CreateMarketParams {
   privateStateInitializationSignature?: string | null;
   resolveSignature?: string | null;
   commitSignature?: string | null;
+  sportsMarket?: SportsMarketMetadata;
 }
 
 class MarketTrackerService {
@@ -136,6 +139,7 @@ class MarketTrackerService {
         commitSignature: tracked.commitSignature,
         creatorPosition: tracked.creatorPosition,
       },
+      sportsMarket: tracked.sportsMarket,
       account: {
         id: tracked.publicKey.slice(0, 8),
         question: tracked.question,
@@ -152,6 +156,7 @@ class MarketTrackerService {
         collateral_token: tracked.collateralMint,
         market_reserves: liquidityHex,
         winning_token_id: { None: {} },
+        oracle_kind: tracked.sportsMarket ? 'manual' : undefined,
       },
     };
   }
@@ -172,6 +177,7 @@ class MarketTrackerService {
       return {
         ...market,
         tracked: true,
+        sportsMarket: tracked.sportsMarket,
         proof: {
           createdAt: tracked.createdAt,
           updatedAt: tracked.updatedAt,

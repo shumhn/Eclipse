@@ -15,6 +15,7 @@ export default function ResolvePanel({ market, onResolveComplete }: ResolvePanel
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const isPriceMarket = market.account.oracle_kind === 'pythPrice';
+  const isSportsMarket = Boolean(market.sportsMarket);
 
   if (market.account.resolved) {
     return null;
@@ -52,8 +53,26 @@ export default function ResolvePanel({ market, onResolveComplete }: ResolvePanel
       <p className="text-sm text-eclipse-text-muted mb-4">
         {isPriceMarket
           ? 'This price market resolves automatically after expiry. A crank watches MagicBlock/Pyth markets, reads the oracle price, and commits the final outcome back to Solana L1.'
+          : isSportsMarket
+            ? 'This sports market resolves through admin confirmation. Use the match context and rule below, then commit the final outcome back through MagicBlock.'
           : 'As an admin or oracle, you can resolve this market. This will finalize the outcome in the TEE and commit the result back to Solana L1.'}
       </p>
+
+      {isSportsMarket && (
+        <div className="mb-4 rounded-lg border border-yellow-400/20 bg-yellow-500/10 p-4 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-semibold text-yellow-100">
+              {market.sportsMarket?.homeTeam} vs {market.sportsMarket?.awayTeam}
+            </span>
+            <span className="rounded-full border border-yellow-400/20 px-2 py-1 text-[11px] uppercase tracking-wide text-yellow-100/70">
+              {market.sportsMarket?.marketType?.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-yellow-100/70">
+            {market.sportsMarket?.resolutionRule}
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 text-xs text-eclipse-red p-3 bg-eclipse-red/10 border border-eclipse-red/20 rounded-lg">
