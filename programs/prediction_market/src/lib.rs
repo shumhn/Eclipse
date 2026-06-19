@@ -148,6 +148,19 @@ pub mod prediction_market {
         ctx.accounts.deposit_collateral(amount)
     }
 
+    /// Create a funded top-up receipt for a delegated private position.
+    ///
+    /// This moves wallet collateral into the market vault on L1. The receipt is
+    /// then delegated and consumed inside PER to credit private balance.
+    pub fn create_position_topup_receipt(
+        ctx: Context<CreatePositionTopupReceipt>,
+        nonce: u64,
+        amount: u64,
+    ) -> Result<()> {
+        ctx.accounts
+            .create_position_topup_receipt(nonce, amount, ctx.bumps)
+    }
+
     /// Withdraw idle L1 collateral before PER activation.
     ///
     /// Once the position is delegated/activated in PER, withdrawals should go
@@ -192,6 +205,13 @@ pub mod prediction_market {
         ctx: Context<CreatePrivatePositionPermission>,
     ) -> Result<()> {
         ctx.accounts.create_private_position_permission()
+    }
+
+    /// Create a MagicBlock permission PDA for a top-up receipt.
+    pub fn create_topup_receipt_permission(
+        ctx: Context<CreateTopupReceiptPermission>,
+    ) -> Result<()> {
+        ctx.accounts.create_topup_receipt_permission()
     }
 
     /// Delegate market shell into MagicBlock / PER.
@@ -283,6 +303,46 @@ pub mod prediction_market {
 
         msg!(
             "Private position for trader {} in market {} delegated into MagicBlock / PER.",
+            trader,
+            market
+        );
+
+        Ok(())
+    }
+
+    /// Delegate a funded top-up receipt into MagicBlock / PER.
+    pub fn delegate_topup_receipt_into_tee(
+        ctx: Context<DelegateTopupReceipt>,
+        market: Pubkey,
+        trader: Pubkey,
+        nonce: u64,
+    ) -> Result<()> {
+        let receipt = ctx
+            .accounts
+            .validate_delegate_topup_receipt(market, trader, nonce)?;
+
+        let nonce_bytes = nonce.to_le_bytes();
+        let seeds: &[&[u8]] = &[
+            PositionTopupReceipt::SEED,
+            market.as_ref(),
+            trader.as_ref(),
+            nonce_bytes.as_ref(),
+        ];
+
+        ctx.accounts.delegate_receipt(
+            &ctx.accounts.authority,
+            seeds,
+            ephemeral_rollups_sdk::cpi::DelegateConfig {
+                validator: Some(ctx.accounts.config.tee_validator),
+                ..Default::default()
+            },
+        )?;
+
+        ctx.accounts.emit_delegated(&receipt)?;
+
+        msg!(
+            "Top-up receipt {} for trader {} in market {} delegated into MagicBlock / PER.",
+            nonce,
             trader,
             market
         );
@@ -411,6 +471,29 @@ pub mod prediction_market {
         ctx.accounts.place_private_prediction(amount, predict_yes)
     }
 
+    /// Consume a delegated funded top-up receipt inside PER.
+    ///
+    /// This credits the trader's private position before a follow-up
+    /// place_private_prediction spends that private balance.
+    pub fn consume_position_topup_receipt_er(
+        ctx: Context<ConsumePositionTopupReceiptEr>,
+    ) -> Result<u64> {
+        ctx.accounts.consume_position_topup_receipt_er()
+    }
+
+    /// Atomically consume a delegated top-up receipt and place a private trade.
+    ///
+    /// This is the repeat-trade path: one wallet can add collateral and buy
+    /// YES/NO shares in a single PER transaction without leaving parked funds.
+    pub fn consume_topup_and_place_private_prediction_er(
+        ctx: Context<ConsumeTopupAndPlacePrivatePredictionEr>,
+        amount: u64,
+        predict_yes: bool,
+    ) -> Result<()> {
+        ctx.accounts
+            .consume_topup_and_place_private_prediction_er(amount, predict_yes)
+    }
+
     /// Resolve private market inside MagicBlock / PER.
     ///
     /// Permission:
@@ -425,6 +508,17 @@ pub mod prediction_market {
     /// Resolve a MagicBlock/Pyth price market inside ER/PER.
     pub fn resolve_price_market_er(ctx: Context<ResolvePriceMarketEr>) -> Result<()> {
         ctx.accounts.resolve_price_market_er()
+    }
+
+    /// Resolve a MagicBlock/Pyth price market using a historical observed price
+    /// fetched off-chain for the market's configured close timestamp.
+    pub fn resolve_price_market_with_observed_price_er(
+        ctx: Context<ResolvePriceMarketEr>,
+        observed_price: i64,
+        observed_publish_time: i64,
+    ) -> Result<()> {
+        ctx.accounts
+            .resolve_price_market_with_observed_price_er(observed_price, observed_publish_time)
     }
 
     /// Settle a private position after market resolution.

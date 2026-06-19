@@ -5,8 +5,8 @@ use anchor_spl::{
 };
 
 use crate::state::{
-    Config, ConfigError, Market, MarketError, PositionError, PrivatePositionState, TraderPosition,
-    PRIVATE_POSITION_STATE_DISCRIMINATOR,
+    Config, ConfigError, Market, MarketError, PositionError, PositionTopupReceipt,
+    PrivatePositionState, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 /// Event emitted when a trader opens a position shell.
@@ -25,6 +25,16 @@ pub struct CollateralDeposited {
     pub trader: Pubkey,
     pub position: Pubkey,
     pub amount: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct PositionTopupReceiptCreated {
+    pub market: Pubkey,
+    pub trader: Pubkey,
+    pub receipt: Pubkey,
+    pub amount: u64,
+    pub nonce: u64,
     pub timestamp: i64,
 }
 
@@ -296,6 +306,132 @@ impl<'info> DepositCollateral<'info> {
             trader: self.trader.key(),
             position: self.position.key(),
             amount,
+            timestamp: clock.unix_timestamp,
+        });
+
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+#[instruction(nonce: u64)]
+pub struct CreatePositionTopupReceipt<'info> {
+    #[account(mut)]
+    pub trader: Signer<'info>,
+
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// CHECK: The market may already be delegated. We deserialize and validate manually.
+    pub market: AccountInfo<'info>,
+
+    #[account(
+        init,
+        payer = trader,
+        space = 8 + PositionTopupReceipt::INIT_SPACE,
+        seeds = [
+            PositionTopupReceipt::SEED,
+            market.key().as_ref(),
+            trader.key().as_ref(),
+            nonce.to_le_bytes().as_ref()
+        ],
+        bump,
+    )]
+    pub receipt: Account<'info, PositionTopupReceipt>,
+
+    #[account(
+        constraint = collateral_mint.key() == config.collateral_mint,
+    )]
+    pub collateral_mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        mut,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = trader,
+        associated_token::token_program = token_program,
+    )]
+    pub trader_collateral: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = vault.mint == collateral_mint.key(),
+        constraint = vault.owner == market.key(),
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+}
+
+impl<'info> CreatePositionTopupReceipt<'info> {
+    pub fn create_position_topup_receipt(
+        &mut self,
+        nonce: u64,
+        amount: u64,
+        bumps: CreatePositionTopupReceiptBumps,
+    ) -> Result<()> {
+        let clock = Clock::get()?;
+        let market = load_market_from_account_info_allow_delegated(&self.market)?;
+
+        require!(amount > 0, PositionError::InvalidAmount);
+        market.assert_active()?;
+        require!(
+            clock.unix_timestamp < market.end_time as i64,
+            MarketError::MarketAlreadyEnded
+        );
+        require_keys_eq!(
+            market.collateral_mint,
+            self.config.collateral_mint,
+            PrivatePositionInstructionError::InvalidCollateralMint
+        );
+        require_keys_eq!(
+            market.collateral_mint,
+            self.collateral_mint.key(),
+            PrivatePositionInstructionError::InvalidCollateralMint
+        );
+        require_keys_eq!(
+            self.vault.key(),
+            market.vault,
+            PrivatePositionInstructionError::InvalidVault
+        );
+        require!(
+            self.trader_collateral.amount >= amount,
+            PrivatePositionInstructionError::InsufficientTokenBalance
+        );
+
+        transfer_checked(
+            CpiContext::new(
+                self.token_program.to_account_info(),
+                TransferChecked {
+                    from: self.trader_collateral.to_account_info(),
+                    mint: self.collateral_mint.to_account_info(),
+                    to: self.vault.to_account_info(),
+                    authority: self.trader.to_account_info(),
+                },
+            ),
+            amount,
+            self.collateral_mint.decimals,
+        )?;
+
+        self.receipt.set_inner(PositionTopupReceipt {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            amount,
+            nonce,
+            consumed: false,
+            bump: bumps.receipt,
+        });
+
+        emit!(PositionTopupReceiptCreated {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            receipt: self.receipt.key(),
+            amount,
+            nonce,
             timestamp: clock.unix_timestamp,
         });
 

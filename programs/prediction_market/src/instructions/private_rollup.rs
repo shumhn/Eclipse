@@ -7,7 +7,8 @@ use crate::amm::PythagoreanCurve;
 use crate::state::{
     Config, ConfigError, Market, MarketError, MarketOracleKind, MarketStatus, Outcome,
     PositionError, PriceDirection, PrivateMarketState, PrivatePositionState, PrivateStateError,
-    TraderPosition, PRIVATE_MARKET_STATE_DISCRIMINATOR, PRIVATE_POSITION_STATE_DISCRIMINATOR,
+    PositionTopupReceipt, TopupReceiptError, TraderPosition, PRIVATE_MARKET_STATE_DISCRIMINATOR,
+    PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 const PYTH_LAZER_PRICE_OFFSET: usize = 73;
@@ -54,6 +55,18 @@ pub struct PrivatePredictionPlaced {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct PrivatePositionTopupConsumedEr {
+    pub market: Pubkey,
+    pub trader: Pubkey,
+    pub position: Pubkey,
+    pub private_position: Pubkey,
+    pub receipt: Pubkey,
+    pub amount: u64,
+    pub nonce: u64,
+    pub timestamp: i64,
+}
+
 /// Event emitted when a private market is resolved inside MagicBlock / PER.
 #[event]
 pub struct PrivateMarketResolvedEr {
@@ -64,6 +77,7 @@ pub struct PrivateMarketResolvedEr {
     pub final_yes_supply: u64,
     pub final_no_supply: u64,
     pub resolver_price: i64,
+    pub resolver_publish_time: i64,
     pub timestamp: i64,
 }
 
@@ -490,6 +504,285 @@ impl<'info> PlacePrivatePrediction<'info> {
     }
 }
 
+#[commit]
+#[derive(Accounts)]
+pub struct ConsumePositionTopupReceiptEr<'info> {
+    #[account(mut)]
+    pub trader: Signer<'info>,
+
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account(
+        mut,
+        seeds = [Market::SEED, &market.id.to_le_bytes()],
+        bump = market.bump,
+        constraint = market.status == MarketStatus::Active @ MarketError::MarketNotActive,
+        constraint = market.collateral_mint == config.collateral_mint,
+    )]
+    pub market: Account<'info, Market>,
+
+    #[account(
+        mut,
+        seeds = [TraderPosition::SEED, market.key().as_ref(), trader.key().as_ref()],
+        bump = position.bump,
+        constraint = position.market == market.key() @ PositionError::PositionMarketMismatch,
+        constraint = position.trader == trader.key() @ PositionError::UnauthorizedTrader,
+        constraint = !position.claimed @ PositionError::PositionAlreadyClaimed,
+        constraint = !position.settled @ PositionError::PositionAlreadySettled,
+    )]
+    pub position: Account<'info, TraderPosition>,
+
+    #[account(
+        mut,
+        seeds = [PrivatePositionState::SEED, market.key().as_ref(), trader.key().as_ref()],
+        bump,
+    )]
+    /// CHECK: Loaded/stored manually by handler.
+    pub private_position: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [
+            PositionTopupReceipt::SEED,
+            market.key().as_ref(),
+            trader.key().as_ref(),
+            receipt.nonce.to_le_bytes().as_ref()
+        ],
+        bump = receipt.bump,
+    )]
+    pub receipt: Account<'info, PositionTopupReceipt>,
+}
+
+impl<'info> ConsumePositionTopupReceiptEr<'info> {
+    pub fn consume_position_topup_receipt_er(&mut self) -> Result<u64> {
+        let clock = Clock::get()?;
+
+        require!(
+            clock.unix_timestamp < self.market.end_time as i64,
+            PrivateRollupInstructionError::MarketEnded
+        );
+        require!(self.receipt.amount > 0, TopupReceiptError::InvalidTopupReceiptAmount);
+        require_keys_eq!(
+            self.receipt.market,
+            self.market.key(),
+            TopupReceiptError::TopupReceiptMarketMismatch
+        );
+        require_keys_eq!(
+            self.receipt.trader,
+            self.trader.key(),
+            TopupReceiptError::TopupReceiptTraderMismatch
+        );
+        self.receipt.assert_unconsumed()?;
+
+        let mut private_position = load_private_position_state(&self.private_position)?;
+        private_position.assert_trader(&self.trader.key())?;
+        private_position.assert_market(&self.market.key())?;
+        private_position.assert_not_claimed()?;
+
+        self.position.add_deposit(self.receipt.amount)?;
+        private_position.add_collateral(self.receipt.amount)?;
+
+        self.market.total_deposited = self
+            .market
+            .total_deposited
+            .checked_add(self.receipt.amount)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+
+        self.receipt.mark_consumed();
+        store_private_position_state(&self.private_position, &private_position)?;
+        self.market.exit(&crate::ID)?;
+        self.position.exit(&crate::ID)?;
+        self.receipt.exit(&crate::ID)?;
+
+        emit!(PrivatePositionTopupConsumedEr {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            position: self.position.key(),
+            private_position: self.private_position.key(),
+            receipt: self.receipt.key(),
+            amount: self.receipt.amount,
+            nonce: self.receipt.nonce,
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.trader.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[
+            self.market.to_account_info(),
+            self.position.to_account_info(),
+            self.private_position.to_account_info(),
+            self.receipt.to_account_info(),
+        ])
+        .build_and_invoke()?;
+
+        Ok(self.receipt.amount)
+    }
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct ConsumeTopupAndPlacePrivatePredictionEr<'info> {
+    #[account(mut)]
+    pub trader: Signer<'info>,
+
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account(
+        mut,
+        seeds = [Market::SEED, &market.id.to_le_bytes()],
+        bump = market.bump,
+        constraint = market.status == MarketStatus::Active @ MarketError::MarketNotActive,
+        constraint = market.collateral_mint == config.collateral_mint,
+    )]
+    pub market: Account<'info, Market>,
+
+    #[account(
+        mut,
+        seeds = [TraderPosition::SEED, market.key().as_ref(), trader.key().as_ref()],
+        bump = position.bump,
+        constraint = position.market == market.key() @ PositionError::PositionMarketMismatch,
+        constraint = position.trader == trader.key() @ PositionError::UnauthorizedTrader,
+        constraint = !position.claimed @ PositionError::PositionAlreadyClaimed,
+        constraint = !position.settled @ PositionError::PositionAlreadySettled,
+    )]
+    pub position: Account<'info, TraderPosition>,
+
+    #[account(
+        mut,
+        seeds = [PrivatePositionState::SEED, market.key().as_ref(), trader.key().as_ref()],
+        bump,
+    )]
+    /// CHECK: Loaded/stored manually by handler.
+    pub private_position: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [
+            PositionTopupReceipt::SEED,
+            market.key().as_ref(),
+            trader.key().as_ref(),
+            receipt.nonce.to_le_bytes().as_ref()
+        ],
+        bump = receipt.bump,
+    )]
+    pub receipt: Account<'info, PositionTopupReceipt>,
+}
+
+impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
+    pub fn consume_topup_and_place_private_prediction_er(
+        &mut self,
+        amount: u64,
+        predict_yes: bool,
+    ) -> Result<()> {
+        require!(amount > 0, PrivateStateError::InvalidAmount);
+
+        let clock = Clock::get()?;
+
+        require!(
+            clock.unix_timestamp < self.market.end_time as i64,
+            PrivateRollupInstructionError::MarketEnded
+        );
+        require!(self.receipt.amount > 0, TopupReceiptError::InvalidTopupReceiptAmount);
+        require_keys_eq!(
+            self.receipt.market,
+            self.market.key(),
+            TopupReceiptError::TopupReceiptMarketMismatch
+        );
+        require_keys_eq!(
+            self.receipt.trader,
+            self.trader.key(),
+            TopupReceiptError::TopupReceiptTraderMismatch
+        );
+        self.receipt.assert_unconsumed()?;
+
+        let mut private_position = load_private_position_state(&self.private_position)?;
+        private_position.assert_trader(&self.trader.key())?;
+        private_position.assert_market(&self.market.key())?;
+        private_position.assert_not_claimed()?;
+
+        self.position.add_deposit(self.receipt.amount)?;
+        private_position.add_collateral(self.receipt.amount)?;
+        private_position.spend_collateral(amount)?;
+
+        if predict_yes {
+            private_position.add_yes_shares(amount)?;
+            self.market.live_yes_supply = self
+                .market
+                .live_yes_supply
+                .checked_add(amount)
+                .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        } else {
+            private_position.add_no_shares(amount)?;
+            self.market.live_no_supply = self
+                .market
+                .live_no_supply
+                .checked_add(amount)
+                .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        }
+
+        self.market.live_reserves = self
+            .market
+            .live_reserves
+            .checked_add(amount)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        self.market.total_deposited = self
+            .market
+            .total_deposited
+            .checked_add(self.receipt.amount)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+
+        self.receipt.mark_consumed();
+        store_private_position_state(&self.private_position, &private_position)?;
+        self.market.exit(&crate::ID)?;
+        self.position.exit(&crate::ID)?;
+        self.receipt.exit(&crate::ID)?;
+
+        emit!(PrivatePositionTopupConsumedEr {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            position: self.position.key(),
+            private_position: self.private_position.key(),
+            receipt: self.receipt.key(),
+            amount: self.receipt.amount,
+            nonce: self.receipt.nonce,
+            timestamp: clock.unix_timestamp,
+        });
+        emit!(PrivatePredictionPlaced {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.trader.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[
+            self.market.to_account_info(),
+            self.position.to_account_info(),
+            self.private_position.to_account_info(),
+            self.receipt.to_account_info(),
+        ])
+        .build_and_invoke()?;
+
+        Ok(())
+    }
+}
+
 /// Resolve private market inside ER/PER.
 ///
 /// Permission:
@@ -571,6 +864,7 @@ impl<'info> ResolvePrivateMarketEr<'info> {
             final_yes_supply: self.market.live_yes_supply,
             final_no_supply: self.market.live_no_supply,
             resolver_price: self.market.resolver_price,
+            resolver_publish_time: clock.unix_timestamp,
             timestamp: clock.unix_timestamp,
         });
 
@@ -683,6 +977,96 @@ impl<'info> ResolvePriceMarketEr<'info> {
             final_yes_supply: self.market.live_yes_supply,
             final_no_supply: self.market.live_no_supply,
             resolver_price: observed_price,
+            resolver_publish_time: clock.unix_timestamp,
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.resolver.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[self.market.to_account_info()])
+        .build_and_invoke()?;
+
+        Ok(())
+    }
+
+    pub fn resolve_price_market_with_observed_price_er(
+        &mut self,
+        observed_price: i64,
+        observed_publish_time: i64,
+    ) -> Result<()> {
+        let clock = Clock::get()?;
+
+        let market_id_bytes = self.market.id.to_le_bytes();
+        let (expected_market, expected_bump) =
+            Pubkey::find_program_address(&[Market::SEED, market_id_bytes.as_ref()], &crate::ID);
+
+        require_keys_eq!(
+            expected_market,
+            self.market.key(),
+            PrivateRollupInstructionError::InvalidMarketPda
+        );
+
+        require!(
+            expected_bump == self.market.bump,
+            PrivateRollupInstructionError::InvalidMarketPda
+        );
+
+        require!(
+            self.market.oracle_kind == MarketOracleKind::PythPrice,
+            MarketError::InvalidOracleKind
+        );
+
+        require_keys_eq!(
+            self.oracle_feed.key(),
+            self.market.oracle_feed,
+            MarketError::InvalidOracleFeed
+        );
+
+        require!(
+            clock.unix_timestamp >= self.market.end_time as i64,
+            MarketError::MarketNotEnded
+        );
+
+        require!(
+            self.market.status == MarketStatus::Active || self.market.status == MarketStatus::Ended,
+            PrivateRollupInstructionError::MarketAlreadyResolved
+        );
+
+        require!(
+            observed_publish_time >= self.market.end_time as i64,
+            MarketError::MarketNotEnded
+        );
+
+        require!(
+            observed_publish_time <= self.market.end_time as i64 + 60,
+            MarketError::InvalidOracleFeed
+        );
+
+        let yes_wins = match self.market.price_direction {
+            PriceDirection::Above => observed_price >= self.market.target_price,
+            PriceDirection::Below => observed_price < self.market.target_price,
+        };
+
+        let outcome = if yes_wins { Outcome::Yes } else { Outcome::No };
+
+        let final_reserves = self.market.live_reserves;
+        self.market.resolver_price = observed_price;
+        self.market.mark_resolved(outcome, final_reserves);
+        self.market.mark_settlement_open();
+        self.market.exit(&crate::ID)?;
+
+        emit!(PrivateMarketResolvedEr {
+            market: self.market.key(),
+            resolver: self.resolver.key(),
+            outcome,
+            final_reserves,
+            final_yes_supply: self.market.live_yes_supply,
+            final_no_supply: self.market.live_no_supply,
+            resolver_price: observed_price,
+            resolver_publish_time: observed_publish_time,
             timestamp: clock.unix_timestamp,
         });
 

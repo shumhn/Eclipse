@@ -611,6 +611,412 @@ export type PredictionMarket = {
       "args": []
     },
     {
+      "name": "consumePositionTopupReceiptEr",
+      "docs": [
+        "Consume a delegated funded top-up receipt inside PER.",
+        "",
+        "This credits the trader's private position before a follow-up",
+        "place_private_prediction spends that private balance."
+      ],
+      "discriminator": [
+        154,
+        191,
+        177,
+        105,
+        163,
+        126,
+        122,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "positionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "consumeTopupAndPlacePrivatePredictionEr",
+      "docs": [
+        "Atomically consume a delegated top-up receipt and place a private trade.",
+        "",
+        "This is the repeat-trade path: one wallet can add collateral and buy",
+        "YES/NO shares in a single PER transaction without leaving parked funds."
+      ],
+      "discriminator": [
+        41,
+        80,
+        37,
+        49,
+        229,
+        21,
+        80,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "positionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "predictYes",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "createMarketPermission",
       "docs": [
         "Delegate market shell into MagicBlock / PER.",
@@ -779,6 +1185,181 @@ export type PredictionMarket = {
         }
       ],
       "args": []
+    },
+    {
+      "name": "createPositionTopupReceipt",
+      "docs": [
+        "Create a funded top-up receipt for a delegated private position.",
+        "",
+        "This moves wallet collateral into the market vault on L1. The receipt is",
+        "then delegated and consumed inside PER to credit private balance."
+      ],
+      "discriminator": [
+        191,
+        35,
+        208,
+        110,
+        99,
+        200,
+        214,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateralMint"
+        },
+        {
+          "name": "traderCollateral",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "tokenProgram"
+              },
+              {
+                "kind": "account",
+                "path": "collateralMint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "tokenProgram"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "createPriceMarket",
@@ -1519,6 +2100,110 @@ export type PredictionMarket = {
       "args": []
     },
     {
+      "name": "createTopupReceiptPermission",
+      "docs": [
+        "Create a MagicBlock permission PDA for a top-up receipt."
+      ],
+      "discriminator": [
+        18,
+        148,
+        200,
+        191,
+        90,
+        176,
+        188,
+        9
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt.market",
+                "account": "positionTopupReceipt"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.trader",
+                "account": "positionTopupReceipt"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "positionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "writable": true
+        },
+        {
+          "name": "permissionProgram",
+          "writable": true
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegateMarketIntoTee",
       "docs": [
         "Delegate market shell into MagicBlock / PER.",
@@ -2148,6 +2833,208 @@ export type PredictionMarket = {
         {
           "name": "trader",
           "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "delegateTopupReceiptIntoTee",
+      "docs": [
+        "Delegate a funded top-up receipt into MagicBlock / PER."
+      ],
+      "discriminator": [
+        9,
+        179,
+        202,
+        168,
+        85,
+        162,
+        11,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bufferReceipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                91,
+                78,
+                92,
+                116,
+                122,
+                200,
+                255,
+                148,
+                184,
+                56,
+                0,
+                182,
+                188,
+                113,
+                85,
+                98,
+                165,
+                251,
+                167,
+                30,
+                59,
+                249,
+                151,
+                85,
+                192,
+                227,
+                101,
+                25,
+                4,
+                144,
+                255,
+                123
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegationRecordReceipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "delegationMetadataReceipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegationProgram"
+            }
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true
+        },
+        {
+          "name": "ownerProgram",
+          "address": "79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t"
+        },
+        {
+          "name": "delegationProgram",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market",
+          "type": "pubkey"
+        },
+        {
+          "name": "trader",
+          "type": "pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64"
         }
       ]
     },
@@ -3229,6 +4116,107 @@ export type PredictionMarket = {
       "args": []
     },
     {
+      "name": "resolvePriceMarketWithObservedPriceEr",
+      "docs": [
+        "Resolve a MagicBlock/Pyth price market using a historical observed price",
+        "fetched off-chain for the market's configured close timestamp."
+      ],
+      "discriminator": [
+        20,
+        200,
+        72,
+        143,
+        193,
+        187,
+        141,
+        101
+      ],
+      "accounts": [
+        {
+          "name": "resolver",
+          "docs": [
+            "Keeper / resolver paying for the ER transaction."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Public market shell."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracleFeed",
+          "docs": [
+            "MagicBlock Pyth Lazer price feed account.",
+            ""
+          ]
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "observedPrice",
+          "type": "i64"
+        },
+        {
+          "name": "observedPublishTime",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "resolvePrivateMarketEr",
       "docs": [
         "Resolve private market inside MagicBlock / PER.",
@@ -4148,6 +5136,19 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "positionTopupReceipt",
+      "discriminator": [
+        150,
+        184,
+        227,
+        220,
+        27,
+        202,
+        63,
+        145
+      ]
+    },
+    {
       "name": "traderPosition",
       "discriminator": [
         190,
@@ -4280,6 +5281,32 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "positionTopupReceiptCreated",
+      "discriminator": [
+        18,
+        177,
+        98,
+        185,
+        218,
+        30,
+        208,
+        43
+      ]
+    },
+    {
+      "name": "positionTopupReceiptDelegated",
+      "discriminator": [
+        61,
+        37,
+        101,
+        217,
+        228,
+        173,
+        179,
+        5
+      ]
+    },
+    {
       "name": "privateMarketCreated",
       "discriminator": [
         249,
@@ -4355,6 +5382,19 @@ export type PredictionMarket = {
         135,
         104,
         67
+      ]
+    },
+    {
+      "name": "privatePositionTopupConsumedEr",
+      "discriminator": [
+        195,
+        191,
+        43,
+        40,
+        5,
+        195,
+        105,
+        124
       ]
     },
     {
@@ -5163,6 +6203,110 @@ export type PredictionMarket = {
       }
     },
     {
+      "name": "positionTopupReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "consumed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "positionTopupReceiptCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "positionTopupReceiptDelegated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "teeValidator",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "priceDirection",
       "docs": [
         "Price condition direction."
@@ -5296,6 +6440,10 @@ export type PredictionMarket = {
           },
           {
             "name": "resolverPrice",
+            "type": "i64"
+          },
+          {
+            "name": "resolverPublishTime",
             "type": "i64"
           },
           {
@@ -5448,6 +6596,46 @@ export type PredictionMarket = {
           },
           {
             "name": "collateralAvailable",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "privatePositionTopupConsumedEr",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "privatePosition",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
             "type": "u64"
           },
           {

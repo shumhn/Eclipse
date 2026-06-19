@@ -9,8 +9,8 @@ use ephemeral_rollups_sdk::access_control::{
 use ephemeral_rollups_sdk::anchor::{commit, delegate};
 
 use crate::state::{
-    Config, ConfigError, Market, MarketStatus, PositionError, PrivatePositionState,
-    PrivateStateError, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
+    Config, ConfigError, Market, MarketStatus, PositionError, PositionTopupReceipt,
+    PrivatePositionState, PrivateStateError, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
 /// Event emitted when a market shell is delegated into MagicBlock / PER.
@@ -51,6 +51,18 @@ pub struct PrivatePositionDelegated {
     pub market: Pubkey,
     pub trader: Pubkey,
     pub private_position: Pubkey,
+    pub tee_validator: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct PositionTopupReceiptDelegated {
+    pub authority: Pubkey,
+    pub market: Pubkey,
+    pub trader: Pubkey,
+    pub receipt: Pubkey,
+    pub nonce: u64,
+    pub amount: u64,
     pub tee_validator: Pubkey,
     pub timestamp: i64,
 }
@@ -193,6 +205,89 @@ pub struct CreatePrivatePositionPermission<'info> {
     pub permission_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CreateTopupReceiptPermission<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    #[account(
+        mut,
+        seeds = [
+            PositionTopupReceipt::SEED,
+            receipt.market.as_ref(),
+            receipt.trader.as_ref(),
+            receipt.nonce.to_le_bytes().as_ref()
+        ],
+        bump = receipt.bump,
+    )]
+    pub receipt: Account<'info, PositionTopupReceipt>,
+
+    /// CHECK: Permission PDA derived from the receipt account.
+    #[account(mut, address = Permission::find_pda(&receipt.key()).0)]
+    pub permission: UncheckedAccount<'info>,
+
+    /// CHECK: MagicBlock permission program CPI target.
+    #[account(mut)]
+    pub permission_program: UncheckedAccount<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+impl<'info> CreateTopupReceiptPermission<'info> {
+    pub fn create_topup_receipt_permission(&self) -> Result<()> {
+        let authority = self.authority.key();
+
+        require!(
+            authority == self.receipt.trader || authority == self.config.admin,
+            DelegateError::UnauthorizedDelegation
+        );
+
+        let authority_member = Member {
+            flags: AUTHORITY_FLAG
+                | TX_LOGS_FLAG
+                | TX_BALANCES_FLAG
+                | TX_MESSAGE_FLAG
+                | ACCOUNT_SIGNATURES_FLAG,
+            pubkey: authority,
+        };
+
+        let trader_member = Member {
+            flags: ACCOUNT_SIGNATURES_FLAG,
+            pubkey: self.receipt.trader,
+        };
+
+        let bump_seed = [self.receipt.bump];
+        let nonce_bytes = self.receipt.nonce.to_le_bytes();
+        let seeds: &[&[u8]] = &[
+            PositionTopupReceipt::SEED,
+            self.receipt.market.as_ref(),
+            self.receipt.trader.as_ref(),
+            nonce_bytes.as_ref(),
+            &bump_seed,
+        ];
+        let signer_seeds = &[seeds];
+
+        CreatePermissionCpiBuilder::new(&self.permission_program)
+            .permissioned_account(&self.receipt.to_account_info())
+            .permission(&self.permission.to_account_info())
+            .payer(&self.authority.to_account_info())
+            .system_program(&self.system_program.to_account_info())
+            .args(MembersArgs {
+                members: Some(vec![authority_member, trader_member]),
+            })
+            .invoke_signed(signer_seeds)?;
+
+        Ok(())
+    }
 }
 
 impl<'info> CreatePrivatePositionPermission<'info> {
@@ -585,6 +680,76 @@ impl<'info> DelegatePrivatePosition<'info> {
     }
 }
 
+#[delegate]
+#[derive(Accounts)]
+pub struct DelegateTopupReceipt<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = !config.paused @ ConfigError::ProtocolPaused,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// CHECK: We deserialize manually to prevent Anchor from trying to save an account it no longer owns after delegation
+    #[account(mut, del)]
+    pub receipt: AccountInfo<'info>,
+}
+
+impl<'info> DelegateTopupReceipt<'info> {
+    pub fn validate_delegate_topup_receipt(
+        &self,
+        expected_market: Pubkey,
+        expected_trader: Pubkey,
+        expected_nonce: u64,
+    ) -> Result<PositionTopupReceipt> {
+        let receipt = load_topup_receipt_from_account_info(&self.receipt)?;
+
+        require_keys_eq!(
+            receipt.market,
+            expected_market,
+            DelegateError::TopupReceiptMarketMismatch
+        );
+        require_keys_eq!(
+            receipt.trader,
+            expected_trader,
+            DelegateError::TopupReceiptTraderMismatch
+        );
+        require!(
+            receipt.nonce == expected_nonce,
+            DelegateError::TopupReceiptNonceMismatch
+        );
+        require!(!receipt.consumed, DelegateError::TopupReceiptAlreadyConsumed);
+
+        let authority = self.authority.key();
+        require!(
+            authority == receipt.trader || authority == self.config.admin,
+            DelegateError::UnauthorizedDelegation
+        );
+
+        Ok(receipt)
+    }
+
+    pub fn emit_delegated(&self, receipt: &PositionTopupReceipt) -> Result<()> {
+        let clock = Clock::get()?;
+
+        emit!(PositionTopupReceiptDelegated {
+            authority: self.authority.key(),
+            market: receipt.market,
+            trader: receipt.trader,
+            receipt: self.receipt.key(),
+            nonce: receipt.nonce,
+            amount: receipt.amount,
+            tee_validator: self.config.tee_validator,
+            timestamp: clock.unix_timestamp,
+        });
+
+        Ok(())
+    }
+}
+
 /// Commit and undelegate a trader position shell back to Solana L1.
 ///
 /// Permission model:
@@ -686,6 +851,18 @@ fn load_position_from_account_info_allow_delegated(
         .map_err(|_| error!(DelegateError::InvalidPositionAccount))
 }
 
+fn load_topup_receipt_from_account_info(account: &AccountInfo) -> Result<PositionTopupReceipt> {
+    require_keys_eq!(
+        *account.owner,
+        crate::ID,
+        DelegateError::InvalidAccountOwner
+    );
+    let data = account.try_borrow_data()?;
+    let mut slice: &[u8] = &data;
+    PositionTopupReceipt::try_deserialize(&mut slice)
+        .map_err(|_| error!(DelegateError::InvalidPositionAccount))
+}
+
 fn load_private_position_from_account_info(account: &AccountInfo) -> Result<PrivatePositionState> {
     require_keys_eq!(
         *account.owner,
@@ -730,6 +907,18 @@ pub enum DelegateError {
 
     #[msg("Invalid private position account")]
     InvalidPrivatePositionAccount,
+
+    #[msg("Top-up receipt belongs to a different market")]
+    TopupReceiptMarketMismatch,
+
+    #[msg("Top-up receipt belongs to a different trader")]
+    TopupReceiptTraderMismatch,
+
+    #[msg("Top-up receipt nonce mismatch")]
+    TopupReceiptNonceMismatch,
+
+    #[msg("Top-up receipt has already been consumed")]
+    TopupReceiptAlreadyConsumed,
 
     #[msg("Market id mismatch")]
     MarketIdMismatch,

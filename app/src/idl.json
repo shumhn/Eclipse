@@ -605,6 +605,412 @@
       "args": []
     },
     {
+      "name": "consume_position_topup_receipt_er",
+      "docs": [
+        "Consume a delegated funded top-up receipt inside PER.",
+        "",
+        "This credits the trader's private position before a follow-up",
+        "place_private_prediction spends that private balance."
+      ],
+      "discriminator": [
+        154,
+        191,
+        177,
+        105,
+        163,
+        126,
+        122,
+        79
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "private_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "PositionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
+      "name": "consume_topup_and_place_private_prediction_er",
+      "docs": [
+        "Atomically consume a delegated top-up receipt and place a private trade.",
+        "",
+        "This is the repeat-trade path: one wallet can add collateral and buy",
+        "YES/NO shares in a single PER transaction without leaving parked funds."
+      ],
+      "discriminator": [
+        41,
+        80,
+        37,
+        49,
+        229,
+        21,
+        80,
+        174
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "private_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "PositionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        },
+        {
+          "name": "predict_yes",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "create_market_permission",
       "docs": [
         "Delegate market shell into MagicBlock / PER.",
@@ -773,6 +1179,181 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "create_position_topup_receipt",
+      "docs": [
+        "Create a funded top-up receipt for a delegated private position.",
+        "",
+        "This moves wallet collateral into the market vault on L1. The receipt is",
+        "then delegated and consumed inside PER to credit private balance."
+      ],
+      "discriminator": [
+        191,
+        35,
+        208,
+        110,
+        99,
+        200,
+        214,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market"
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint"
+        },
+        {
+          "name": "trader_collateral",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "trader"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nonce",
+          "type": "u64"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "create_price_market",
@@ -1513,6 +2094,110 @@
       "args": []
     },
     {
+      "name": "create_topup_receipt_permission",
+      "docs": [
+        "Create a MagicBlock permission PDA for a top-up receipt."
+      ],
+      "discriminator": [
+        18,
+        148,
+        200,
+        191,
+        90,
+        176,
+        188,
+        9
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  116,
+                  111,
+                  112,
+                  117,
+                  112,
+                  95,
+                  114,
+                  101,
+                  99,
+                  101,
+                  105,
+                  112,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt.market",
+                "account": "PositionTopupReceipt"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.trader",
+                "account": "PositionTopupReceipt"
+              },
+              {
+                "kind": "account",
+                "path": "receipt.nonce",
+                "account": "PositionTopupReceipt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "permission",
+          "writable": true
+        },
+        {
+          "name": "permission_program",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "delegate_market_into_tee",
       "docs": [
         "Delegate market shell into MagicBlock / PER.",
@@ -2142,6 +2827,208 @@
         {
           "name": "trader",
           "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "delegate_topup_receipt_into_tee",
+      "docs": [
+        "Delegate a funded top-up receipt into MagicBlock / PER."
+      ],
+      "discriminator": [
+        9,
+        179,
+        202,
+        168,
+        85,
+        162,
+        11,
+        250
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "buffer_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                91,
+                78,
+                92,
+                116,
+                122,
+                200,
+                255,
+                148,
+                184,
+                56,
+                0,
+                182,
+                188,
+                113,
+                85,
+                98,
+                165,
+                251,
+                167,
+                30,
+                59,
+                249,
+                151,
+                85,
+                192,
+                227,
+                101,
+                25,
+                4,
+                144,
+                255,
+                123
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_receipt",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "receipt"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "receipt",
+          "writable": true
+        },
+        {
+          "name": "owner_program",
+          "address": "79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "market",
+          "type": "pubkey"
+        },
+        {
+          "name": "trader",
+          "type": "pubkey"
+        },
+        {
+          "name": "nonce",
+          "type": "u64"
         }
       ]
     },
@@ -4243,6 +5130,19 @@
       ]
     },
     {
+      "name": "PositionTopupReceipt",
+      "discriminator": [
+        150,
+        184,
+        227,
+        220,
+        27,
+        202,
+        63,
+        145
+      ]
+    },
+    {
       "name": "TraderPosition",
       "discriminator": [
         190,
@@ -4375,6 +5275,32 @@
       ]
     },
     {
+      "name": "PositionTopupReceiptCreated",
+      "discriminator": [
+        18,
+        177,
+        98,
+        185,
+        218,
+        30,
+        208,
+        43
+      ]
+    },
+    {
+      "name": "PositionTopupReceiptDelegated",
+      "discriminator": [
+        61,
+        37,
+        101,
+        217,
+        228,
+        173,
+        179,
+        5
+      ]
+    },
+    {
       "name": "PrivateMarketCreated",
       "discriminator": [
         249,
@@ -4453,6 +5379,19 @@
       ]
     },
     {
+      "name": "PrivatePositionTopupConsumedEr",
+      "discriminator": [
+        195,
+        191,
+        43,
+        40,
+        5,
+        195,
+        105,
+        124
+      ]
+    },
+    {
       "name": "PrivatePredictionPlaced",
       "discriminator": [
         225,
@@ -4521,56 +5460,81 @@
   "errors": [
     {
       "code": 6000,
-      "name": "UnauthorizedTrader",
-      "msg": "Unauthorized trader"
+      "name": "PrivateMarketNotActive",
+      "msg": "Private market is not active"
     },
     {
       "code": 6001,
-      "name": "PositionMarketMismatch",
-      "msg": "Position does not belong to this market"
+      "name": "PrivateMarketNotEnded",
+      "msg": "Private market has not ended yet"
     },
     {
       "code": 6002,
-      "name": "PositionAlreadyClaimed",
-      "msg": "Position already claimed"
+      "name": "PrivateMarketNotResolved",
+      "msg": "Private market is not resolved"
     },
     {
       "code": 6003,
-      "name": "PositionAlreadySettled",
-      "msg": "Position is already settled"
+      "name": "PrivateMarketCancelled",
+      "msg": "Private market has been cancelled"
     },
     {
       "code": 6004,
-      "name": "PositionNotSettled",
-      "msg": "Position is not settled"
+      "name": "PrivateMarketStateNotInitialized",
+      "msg": "Private market state is not initialized"
     },
     {
       "code": 6005,
-      "name": "PositionAlreadyDelegated",
-      "msg": "Position already delegated"
+      "name": "PrivatePositionStateNotInitialized",
+      "msg": "Private position state is not initialized"
     },
     {
       "code": 6006,
-      "name": "PositionNotDelegated",
-      "msg": "Position is not delegated"
+      "name": "PrivatePositionTraderMismatch",
+      "msg": "Private position belongs to a different trader"
     },
     {
       "code": 6007,
+      "name": "PrivatePositionMarketMismatch",
+      "msg": "Private position belongs to a different market"
+    },
+    {
+      "code": 6008,
+      "name": "PrivatePositionAlreadyClaimed",
+      "msg": "Private position already claimed"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidPrivateMarketStatus",
+      "msg": "Invalid private market status"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidPrivateOutcome",
+      "msg": "Invalid private market outcome"
+    },
+    {
+      "code": 6011,
       "name": "InvalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6008,
-      "name": "InsufficientCollateral",
-      "msg": "Insufficient collateral"
+      "code": 6012,
+      "name": "InsufficientPrivateCollateral",
+      "msg": "Insufficient private collateral"
     },
     {
-      "code": 6009,
-      "name": "ClaimAmountTooHigh",
-      "msg": "Claim amount is greater than claimable amount"
+      "code": 6013,
+      "name": "InsufficientPrivateShares",
+      "msg": "Insufficient private shares"
     },
     {
-      "code": 6010,
+      "code": 6014,
+      "name": "WinningSupplyIsZero",
+      "msg": "Winning supply is zero"
+    },
+    {
+      "code": 6015,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     }
@@ -5233,6 +6197,110 @@
       }
     },
     {
+      "name": "PositionTopupReceipt",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "consumed",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionTopupReceiptCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PositionTopupReceiptDelegated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "nonce",
+            "type": "u64"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "tee_validator",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "PriceDirection",
       "docs": [
         "Price condition direction."
@@ -5522,6 +6590,46 @@
           },
           {
             "name": "collateral_available",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrivatePositionTopupConsumedEr",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "position",
+            "type": "pubkey"
+          },
+          {
+            "name": "private_position",
+            "type": "pubkey"
+          },
+          {
+            "name": "receipt",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nonce",
             "type": "u64"
           },
           {
