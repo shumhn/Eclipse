@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAccounts, AddressType } from "@phantom/react-sdk";
+import { PublicKey } from "@solana/web3.js";
 import {
   ArrowLeft,
   Clock,
@@ -23,23 +25,31 @@ import { Button } from "@/components/ui/button";
 import {
   calculatePriceFromReserves,
   fetchMarket,
+  fetchPosition,
   Market,
   MarketPrices,
+  Position,
   formatUsdPrice,
   explorerTxUrl,
   formatTimestamp,
   getMarketTimeRemaining,
   isMarketActive,
 } from "@/lib/api";
+import { getOrFetchTeeAuthToken } from "@/lib/magicblock";
 
 export default function MarketDetailPage() {
   const params = useParams();
   const router = useRouter();
   const marketId = params.id as string;
+  const accounts = useAccounts();
+  const solanaAccount = accounts?.find((a) => a.addressType === AddressType.solana);
+  const walletAddress = solanaAccount?.address || "";
 
   const [market, setMarket] = useState<Market | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [walletPosition, setWalletPosition] = useState<Position | null>(null);
+  const [positionLoading, setPositionLoading] = useState(false);
 
   const loadMarket = async () => {
     if (!marketId) return;
@@ -58,11 +68,44 @@ export default function MarketDetailPage() {
     }
   };
 
+  const loadWalletPosition = async () => {
+    if (!marketId || !walletAddress) {
+      setWalletPosition(null);
+      return;
+    }
+
+    setPositionLoading(true);
+    try {
+      const signer = (window as any).phantom?.solana;
+      const teeToken = signer?.signMessage
+        ? await getOrFetchTeeAuthToken(
+            new PublicKey(walletAddress),
+            async (msg: Uint8Array) => (await signer.signMessage(msg, "utf8")).signature,
+          )
+        : undefined;
+
+      const nextPosition = await fetchPosition({
+        marketAddress: marketId,
+        walletAddress,
+        teeToken,
+      });
+      setWalletPosition(nextPosition);
+    } catch {
+      setWalletPosition(null);
+    } finally {
+      setPositionLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadMarket();
     const timer = window.setInterval(loadMarket, 5000);
     return () => window.clearInterval(timer);
   }, [marketId]);
+
+  useEffect(() => {
+    loadWalletPosition();
+  }, [marketId, walletAddress]);
 
   const positionsHidden = market?.positionsHidden ?? false;
   const isPriceMarket = market?.account.oracle_kind === "pythPrice";
@@ -486,10 +529,15 @@ export default function MarketDetailPage() {
                     <TradePanel
                       marketAddress={marketId}
                       prices={prices}
-                      onTradeComplete={loadMarket}
+                      onTradeComplete={() => {
+                        loadMarket();
+                        loadWalletPosition();
+                      }}
                       tradingEnabled={tradingEnabled}
                       disabledReason={disabledTradeReason}
                       positionsHidden={positionsHidden}
+                      existingPosition={walletPosition}
+                      positionLoading={positionLoading}
                     />
                   )}
 

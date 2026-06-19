@@ -14,11 +14,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { market, side, amountUsdc, walletAddress } = prepareTradeSchema.parse(body);
 
+    const authHeader = req.headers.get('authorization') || '';
+    const teeToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : undefined;
+
     const result = await magicblockService.preparePrivateTradeTransaction({
       market,
       side,
       amountUsdc,
       walletAddress,
+      teeToken,
     });
 
     return NextResponse.json({

@@ -14,7 +14,12 @@ export async function GET(req: Request) {
       );
     }
 
-    const position = await magicblockService.getTraderPositionInfo(market, walletAddress);
+    const authHeader = req.headers.get('authorization') || '';
+    const teeToken = authHeader.toLowerCase().startsWith('bearer ')
+      ? authHeader.slice(7).trim()
+      : undefined;
+
+    const position = await magicblockService.getTraderPositionInfo(market, walletAddress, teeToken);
 
     return NextResponse.json({
       success: true,

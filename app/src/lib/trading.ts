@@ -98,10 +98,16 @@ export async function delegatePrivatePosition(params: {
   return json.data;
 }
 
-export async function preparePrivateTradeTransaction(params: TradeParams): Promise<PreparedTransaction> {
+export async function preparePrivateTradeTransaction(
+  params: TradeParams,
+  teeToken?: string
+): Promise<PreparedTransaction> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (teeToken) headers.Authorization = `Bearer ${teeToken}`;
+
   const res = await fetch(`${API_BASE}/api/trading/prepare-private`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       market: params.marketAddress,
       side: params.side,

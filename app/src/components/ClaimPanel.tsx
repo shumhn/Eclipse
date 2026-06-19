@@ -51,9 +51,18 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
 
     setPositionLoading(true);
     try {
+      const signer = (window as any).phantom?.solana;
+      const teeToken = signer?.signMessage
+        ? await getOrFetchTeeAuthToken(
+            new PublicKey(walletAddress),
+            async (msg: Uint8Array) => (await signer.signMessage(msg, 'utf8')).signature
+          )
+        : undefined;
+
       const nextPosition = await fetchPosition({
         marketAddress: market.publicKey,
         walletAddress,
+        teeToken,
       });
       setPosition(nextPosition);
       return nextPosition;

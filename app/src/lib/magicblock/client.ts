@@ -263,6 +263,16 @@ function isAlreadyProcessedError(error: unknown): boolean {
   return msg.toLowerCase().includes('already been processed');
 }
 
+function formatTransactionError(error: unknown): string {
+  if (!error) return 'unknown error';
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 /**
  * Sign a transaction with the user's wallet and send it to the correct RPC.
  */
@@ -307,7 +317,7 @@ export async function signAndSend(
 
   // Confirm
   try {
-    await conn.confirmTransaction(
+    const confirmation = await conn.confirmTransaction(
       {
         signature: sig,
         blockhash: latest.blockhash,
@@ -315,6 +325,12 @@ export async function signAndSend(
       },
       'confirmed'
     );
+
+    if (confirmation.value.err) {
+      throw new Error(
+        `Transaction ${sig} failed: ${formatTransactionError(confirmation.value.err)}`
+      );
+    }
   } catch (confirmErr) {
     if (!isAlreadyProcessedError(confirmErr)) {
       throw confirmErr;

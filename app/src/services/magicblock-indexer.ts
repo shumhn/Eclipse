@@ -42,6 +42,7 @@ import {
   type PriceFeedAsset,
   type PriceFeedSymbol,
 } from '@/lib/priceFeeds';
+import type { SportsMarketMetadata } from '@/lib/sports';
 import { findKeypairByPublicKey, getDefaultKeypair, LoadedKeypair } from './solana-wallets';
 
 const PROGRAM_ID = new PublicKey('79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t');
@@ -49,6 +50,7 @@ const MAGIC_PROGRAM_ID = new PublicKey('Magic11111111111111111111111111111111111
 const MAGIC_CONTEXT_ID = new PublicKey('MagicContext1111111111111111111111111111111');
 const EPHEMERAL_RPC_URL = 'https://devnet-tee.magicblock.app';
 const MAGICBLOCK_READ_RPC_URL = 'https://devnet.magicblock.app';
+const PYTH_BENCHMARKS_URL = 'https://benchmarks.pyth.network';
 const ER_SPONSOR_BUFFER_LAMPORTS = 100_000;
 const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 64);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
@@ -178,6 +180,7 @@ export interface NormalizedMarket {
     rule: string;
     oracleFeed?: string;
   };
+  sportsMarket?: SportsMarketMetadata;
   account: {
     id: string;
     question: string;
@@ -254,6 +257,23 @@ function boolFromU8(value: any): boolean {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface HistoricalBenchmarkParsedPrice {
+  id: string;
+  price?: {
+    price: string;
+    expo: number;
+    publish_time?: number;
+  };
+}
+
+interface HistoricalBenchmarkResponse {
+  parsed?: HistoricalBenchmarkParsedPrice[];
+}
+
+interface HistoricalBenchmarkWindowResponse {
+  parsed?: HistoricalBenchmarkParsedPrice[];
 }
 
 export class MagicBlockIndexer {
@@ -373,7 +393,11 @@ export class MagicBlockIndexer {
     );
   }
 
-  async getTraderPositionInfo(marketAddress: string, traderAddress: string): Promise<NormalizedPosition | null> {
+  async getTraderPositionInfo(
+    marketAddress: string,
+    traderAddress: string,
+    teeToken?: string
+  ): Promise<NormalizedPosition | null> {
     try {
       const marketPubkey = new PublicKey(marketAddress);
       const traderPubkey = new PublicKey(traderAddress);
@@ -383,7 +407,7 @@ export class MagicBlockIndexer {
 
       const publicPosition = this.decodePositionAccount(info.data);
       const privatePosition = info.owner.equals(DELEGATION_PROGRAM_ID)
-        ? await this.fetchPrivatePositionState(marketPubkey, traderPubkey)
+        ? await this.fetchPrivatePositionState(marketPubkey, traderPubkey, teeToken)
         : null;
 
       return this.normalizePosition(positionPda, publicPosition, info.owner, privatePosition);
@@ -515,6 +539,7 @@ export class MagicBlockIndexer {
     side: 'yes' | 'no';
     amountUsdc: number;
     walletAddress: string;
+    teeToken?: string;
   }): Promise<{ transaction: Transaction; positionAddress: string }> {
     const marketPubkey = new PublicKey(params.market);
     const traderPubkey = new PublicKey(params.walletAddress);
@@ -533,7 +558,11 @@ export class MagicBlockIndexer {
       throw new Error('Private position is not delegated into TEE yet');
     }
 
-    const privatePositionInfo = await this.ephemeralConnection.getAccountInfo(
+    const teeConnection = params.teeToken
+      ? new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(params.teeToken)}`, 'confirmed')
+      : this.ephemeralConnection;
+
+    const privatePositionInfo = await teeConnection.getAccountInfo(
       privatePositionPda,
       'confirmed'
     );
@@ -553,7 +582,7 @@ export class MagicBlockIndexer {
       throw new Error('Insufficient delegated collateral available for private trade');
     }
 
-    const instructionProgram = this.createInstructionProgram(this.ephemeralConnection);
+    const instructionProgram = this.createInstructionProgram(teeConnection);
     const amount = new BN(amountLamports);
     const tx = new Transaction();
 
@@ -1393,20 +1422,35 @@ export class MagicBlockIndexer {
     const oracleKind = market.account.oracle_kind || 'manual';
     const resolveIx =
       oracleKind === 'pythPrice'
-        ? await ephemeralProgram.methods
-            .resolvePriceMarketEr()
-            .accountsPartial({
-              resolver: oracle.keypair.publicKey,
-              config: configPda,
-              market: marketPubkey,
-              oracleFeed: new PublicKey(
-                market.account.oracle_feed ||
-                  MAGICBLOCK_PRICE_FEEDS[DEFAULT_PRICE_FEED_SYMBOL].toBase58()
-              ),
-              magicProgram: MAGIC_PROGRAM_ID,
-              magicContext: MAGIC_CONTEXT_ID,
-            })
-            .instruction()
+        ? await (async () => {
+            const oracleFeed = market.account.oracle_feed ||
+              MAGICBLOCK_PRICE_FEEDS[DEFAULT_PRICE_FEED_SYMBOL].toBase58();
+            const endTime = parseInt(market.account.end_time, 16);
+
+            if (!Number.isFinite(endTime)) {
+              throw new Error(`Invalid market end time for ${marketAddress}`);
+            }
+
+            const { rawPrice, publishTime } = await this.fetchHistoricalSettlementPrice(
+              oracleFeed,
+              endTime
+            );
+
+            return ephemeralProgram.methods
+              .resolvePriceMarketWithObservedPriceEr(
+                new BN(rawPrice.toString()),
+                new BN(publishTime.toString())
+              )
+              .accountsPartial({
+                resolver: oracle.keypair.publicKey,
+                config: configPda,
+                market: marketPubkey,
+                oracleFeed: new PublicKey(oracleFeed),
+                magicProgram: MAGIC_PROGRAM_ID,
+                magicContext: MAGIC_CONTEXT_ID,
+              })
+              .instruction();
+          })()
         : await ephemeralProgram.methods
             .resolvePrivateMarketEr(outcome === 'yes')
             .accountsPartial({
@@ -1778,11 +1822,11 @@ export class MagicBlockIndexer {
   }
 
   private decodePrivateMarketState(data: Buffer) {
-    return PrivateMarketStateLayout.decode(data) as LayoutDecoded;
+    return PrivateMarketStateLayout.decode(data.subarray(8)) as LayoutDecoded;
   }
 
   private decodePrivatePositionState(data: Buffer) {
-    return PrivatePositionStateLayout.decode(data) as LayoutDecoded;
+    return PrivatePositionStateLayout.decode(data.subarray(8)) as LayoutDecoded;
   }
 
   private async fetchPrivateMarketState(market: PublicKey, owner: PublicKey) {
@@ -1799,9 +1843,12 @@ export class MagicBlockIndexer {
     }
   }
 
-  private async fetchPrivatePositionState(market: PublicKey, trader: PublicKey) {
+  private async fetchPrivatePositionState(market: PublicKey, trader: PublicKey, teeToken?: string) {
     const [privatePositionPda] = this.getPrivatePositionStatePda(market, trader);
-    const info = await this.ephemeralConnection.getAccountInfo(privatePositionPda, 'confirmed');
+    const connection = teeToken
+      ? new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(teeToken)}`, 'confirmed')
+      : this.ephemeralConnection;
+    const info = await connection.getAccountInfo(privatePositionPda, 'confirmed');
     if (!info) return null;
 
     try {
@@ -1942,6 +1989,94 @@ export class MagicBlockIndexer {
     } catch {
       return null;
     }
+  }
+
+  private async fetchHistoricalSettlementPrice(feedAddress: string, endTime: number): Promise<{
+    rawPrice: bigint;
+    publishTime: number;
+  }> {
+    const feed = PRICE_FEED_BY_MAGICBLOCK_ACCOUNT[feedAddress];
+    if (!feed) {
+      throw new Error(`Unsupported oracle feed ${feedAddress}`);
+    }
+
+    const feedId = `0x${feed.hermesFeedId.replace(/^0x/, '')}`;
+    const exact = await this.fetchHistoricalBenchmark(
+      `${PYTH_BENCHMARKS_URL}/v1/updates/price/${endTime}?ids=${feedId}`
+    );
+
+    const exactMatch = Array.isArray(exact)
+      ? undefined
+      : this.selectHistoricalParsedPrice(exact.parsed, feed.hermesFeedId);
+    if (exactMatch?.price?.price && exactMatch.price.publish_time !== undefined) {
+      return this.normalizeHistoricalPrice(feedAddress, exactMatch);
+    }
+
+    const window = await this.fetchHistoricalBenchmark(
+      `${PYTH_BENCHMARKS_URL}/v1/updates/price/${endTime}/60?ids=${feedId}`
+    );
+    const windowCandidates = (window as HistoricalBenchmarkWindowResponse[])
+      .flatMap((entry) => entry.parsed || [])
+      .filter((entry) => entry.id === feed.hermesFeedId && entry.price?.publish_time !== undefined);
+
+    const candidate =
+      windowCandidates
+        .filter((entry) => (entry.price?.publish_time || 0) >= endTime)
+        .sort((left, right) => (left.price!.publish_time! - right.price!.publish_time!))[0] ||
+      windowCandidates
+        .sort((left, right) => Math.abs((left.price!.publish_time || 0) - endTime) - Math.abs((right.price!.publish_time || 0) - endTime))[0];
+
+    if (!candidate?.price?.price || candidate.price.publish_time === undefined) {
+      throw new Error(`No historical benchmark price found for ${feed.label} at ${endTime}`);
+    }
+
+    return this.normalizeHistoricalPrice(feedAddress, candidate);
+  }
+
+  private async fetchHistoricalBenchmark(url: string): Promise<HistoricalBenchmarkResponse | HistoricalBenchmarkWindowResponse[]> {
+    const headers: Record<string, string> = {};
+    if (process.env.PYTH_API_KEY) {
+      headers.authorization = `Bearer ${process.env.PYTH_API_KEY}`;
+    }
+
+    const response = await fetch(url, {
+      headers,
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Historical price request failed with ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  private selectHistoricalParsedPrice(
+    parsed: HistoricalBenchmarkParsedPrice[] | undefined,
+    hermesFeedId: string
+  ) {
+    return (parsed || []).find((entry) => entry.id === hermesFeedId);
+  }
+
+  private normalizeHistoricalPrice(
+    feedAddress: string,
+    parsed: HistoricalBenchmarkParsedPrice
+  ): { rawPrice: bigint; publishTime: number } {
+    const feed = PRICE_FEED_BY_MAGICBLOCK_ACCOUNT[feedAddress];
+    if (!feed || !parsed.price) {
+      throw new Error(`Incomplete historical benchmark payload for ${feedAddress}`);
+    }
+
+    if (parsed.price.expo !== feed.exponent) {
+      throw new Error(
+        `Unexpected exponent ${parsed.price.expo} for ${feed.label}; expected ${feed.exponent}`
+      );
+    }
+
+    return {
+      rawPrice: BigInt(parsed.price.price),
+      publishTime: parsed.price.publish_time!,
+    };
   }
 
   private normalizePosition(

@@ -2,6 +2,7 @@
  * API client for Private Prediction Markets (MagicBlock TEE)
  */
 import type { PriceFeedAsset, PriceFeedSymbol } from './priceFeeds';
+import type { SportsMarketMetadata } from './sports';
 
 // Use relative URLs - Next.js rewrites will proxy to the actual API
 const API_BASE = '';
@@ -40,6 +41,7 @@ export interface Market {
     rule: string;
     oracleFeed?: string;
   };
+  sportsMarket?: SportsMarketMetadata;
   account: {
     id: string;
     question: string;
@@ -152,12 +154,17 @@ export async function fetchMarketPrices(marketId: string): Promise<MarketPrices>
 export async function fetchPosition(params: {
   marketAddress: string;
   walletAddress: string;
+  teeToken?: string;
 }): Promise<Position | null> {
   const searchParams = new URLSearchParams({
     market: params.marketAddress,
     walletAddress: params.walletAddress,
   });
-  const res = await fetch(`${API_BASE}/api/positions?${searchParams.toString()}`);
+  const res = await fetch(`${API_BASE}/api/positions?${searchParams.toString()}`, {
+    headers: params.teeToken
+      ? { Authorization: `Bearer ${params.teeToken}` }
+      : undefined,
+  });
   const json = await parseApiResponse<Position | null>(res, 'Failed to fetch position');
   return json.data || null;
 }
@@ -198,6 +205,7 @@ export interface CreateMarketParams {
   targetPrice?: string;
   priceDirection?: 'above' | 'below';
   oracleFeed?: string;
+  sportsMarket?: SportsMarketMetadata;
 }
 
 export interface CreateMarketResult {
@@ -217,6 +225,7 @@ export interface CreateMarketResult {
   creatorPositionDelegationSignature?: string | null;
   privateStateInitializationSignature?: string | null;
   creatorPosition?: string;
+  sportsMarket?: SportsMarketMetadata;
   tracked: {
     publicKey: string;
     question: string;
@@ -236,6 +245,7 @@ export interface CreateMarketResult {
     resolveSignature?: string | null;
     commitSignature?: string | null;
     creatorPosition?: string;
+    sportsMarket?: SportsMarketMetadata;
   };
 }
 
@@ -344,6 +354,7 @@ export interface TrackedMarketsResponse {
     resolveSignature?: string | null;
     commitSignature?: string | null;
     creatorPosition?: string;
+    sportsMarket?: SportsMarketMetadata;
   }>;
 }
 
