@@ -92,6 +92,8 @@ function MarketsContent() {
   const handleMarketCreated = (result: CreateMarketResult) => {
     setTrackedAddresses((prev) => new Set(Array.from(prev).concat([result.marketAddress])));
     loadMarkets();
+    // Reload again after a short delay to catch newly finalized on-chain state
+    setTimeout(() => loadMarkets(), 3000);
   };
 
   const categoryMarkets = useMemo(() => {

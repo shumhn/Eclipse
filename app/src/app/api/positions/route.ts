@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
 
 export async function GET(req: Request) {

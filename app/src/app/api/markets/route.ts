@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { z } from 'zod';
 import { coreService as magicblockService } from '@/services/magicblock-indexer';
 import { marketTracker } from '@/services/marketTracker';

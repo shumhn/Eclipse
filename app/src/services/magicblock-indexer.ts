@@ -52,7 +52,7 @@ const EPHEMERAL_RPC_URL = 'https://devnet-tee.magicblock.app';
 const MAGICBLOCK_READ_RPC_URL = 'https://devnet.magicblock.app';
 const PYTH_BENCHMARKS_URL = 'https://benchmarks.pyth.network';
 const ER_SPONSOR_BUFFER_LAMPORTS = 100_000;
-const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 64);
+const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 256);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
 const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEntries(
   Object.entries(PRICE_FEED_BY_SYMBOL).map(([symbol, feed]) => [
@@ -325,10 +325,29 @@ export class MagicBlockIndexer {
   }): Promise<{ count: number; data: NormalizedMarket[] }> {
     const attachPriceData = options?.attachPriceData ?? true;
     const fetchPrivateState = options?.fetchPrivateState ?? true;
-    const marketPubkeys = Array.from({ length: MARKET_SCAN_LIMIT }, (_, id) =>
+
+    // Use the on-chain market count so we never miss newly created markets
+    let scanLimit = MARKET_SCAN_LIMIT;
+    try {
+      const config = await this.getProtocolConfig();
+      // Scan a few extra slots beyond marketCount for safety
+      scanLimit = Math.max(config.marketCount + 5, MARKET_SCAN_LIMIT);
+    } catch {
+      // Config not available — fall back to static limit
+    }
+
+    const marketPubkeys = Array.from({ length: scanLimit }, (_, id) =>
       this.getMarketPdaById(id)[0]
     );
-    const infos = await this.connection.getMultipleAccountsInfo(marketPubkeys, 'confirmed');
+
+    // Batch getMultipleAccountsInfo in chunks of 100 (RPC limit)
+    const BATCH = 100;
+    const infos: (import('@solana/web3.js').AccountInfo<Buffer> | null)[] = [];
+    for (let i = 0; i < marketPubkeys.length; i += BATCH) {
+      const batch = marketPubkeys.slice(i, i + BATCH);
+      const batchInfos = await this.connection.getMultipleAccountsInfo(batch, 'confirmed');
+      infos.push(...batchInfos);
+    }
 
     const markets = await Promise.all(
       infos.map(async (account, index) => {
@@ -2003,18 +2022,42 @@ export class MagicBlockIndexer {
     return PrivatePositionStateLayout.decode(data.subarray(8)) as LayoutDecoded;
   }
 
-  private async fetchPrivateMarketState(market: PublicKey, owner: PublicKey) {
+  private async fetchPrivateMarketState(market: PublicKey, owner: PublicKey, teeToken?: string) {
     if (!owner.equals(DELEGATION_PROGRAM_ID)) return null;
 
     const [marketStatePda] = this.getPrivateMarketStatePda(market);
-    const info = await this.ephemeralConnection.getAccountInfo(marketStatePda, 'confirmed');
+    const connection = teeToken
+      ? new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(teeToken)}`, 'confirmed')
+      : this.ephemeralConnection;
+    const info = await connection.getAccountInfo(marketStatePda, 'confirmed');
     if (!info) return null;
 
     try {
       return this.decodePrivateMarketState(info.data);
-    } catch {
+    } catch (e) {
+      console.error('Failed to decode private market state:', e);
       return null;
     }
+  }
+
+  public async getDecryptedMarketState(marketAddress: string, teeToken: string) {
+    const market = new PublicKey(marketAddress);
+    const state = await this.fetchPrivateMarketState(market, DELEGATION_PROGRAM_ID, teeToken);
+    if (!state) return null;
+
+    // Convert everything to string/number for clean JSON representation
+    return {
+      market: pk(state.market),
+      collateralMint: pk(state.collateral_mint),
+      endTime: state.end_time.toString(),
+      createdAt: state.created_at.toString(),
+      reserves: state.reserves.toString(),
+      yesSupply: state.yes_supply.toString(),
+      noSupply: state.no_supply.toString(),
+      status: state.status,
+      outcome: state.outcome,
+      bump: state.bump,
+    };
   }
 
   private async fetchPrivatePositionState(market: PublicKey, trader: PublicKey, teeToken?: string) {
