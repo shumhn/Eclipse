@@ -14,6 +14,8 @@ export interface TradeParams {
   side: 'yes' | 'no';
   amountUsdc: number; // Amount in USDC units (not lamports)
   walletAddress: string;
+  topupReceiptAddress?: string;
+  topupNonce?: string;
 }
 
 export interface PreparedTransaction {
@@ -23,6 +25,8 @@ export interface PreparedTransaction {
   positionAddress?: string;
   alreadyExists?: boolean;
   sendTo?: 'base' | 'ephemeral';
+  topupReceiptAddress?: string;
+  topupNonce?: string;
 }
 
 export interface TradeResult {
@@ -98,6 +102,29 @@ export async function delegatePrivatePosition(params: {
   return json.data;
 }
 
+export async function delegateTopupReceipt(params: {
+  marketAddress: string;
+  walletAddress: string;
+  nonce: string;
+}): Promise<{ signature: string | null; alreadyDelegated: boolean; receiptAddress: string }> {
+  const res = await fetch(`${API_BASE}/api/trading/delegate-topup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      market: params.marketAddress,
+      walletAddress: params.walletAddress,
+      nonce: params.nonce,
+    }),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to delegate top-up receipt');
+  }
+
+  return json.data;
+}
+
 export async function preparePrivateTradeTransaction(
   params: TradeParams,
   teeToken?: string
@@ -113,6 +140,8 @@ export async function preparePrivateTradeTransaction(
       side: params.side,
       amountUsdc: params.amountUsdc,
       walletAddress: params.walletAddress,
+      topupReceiptAddress: params.topupReceiptAddress,
+      topupNonce: params.topupNonce,
     }),
   });
 

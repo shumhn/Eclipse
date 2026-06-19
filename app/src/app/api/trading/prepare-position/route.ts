@@ -26,6 +26,8 @@ export async function POST(req: Request) {
         positionAddress: result.positionAddress,
         alreadyExists: result.alreadyExists,
         sendTo: 'base',
+        topupReceiptAddress: result.topupReceiptAddress,
+        topupNonce: result.topupNonce,
       },
     });
   } catch (error) {

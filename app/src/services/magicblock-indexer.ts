@@ -421,7 +421,13 @@ export class MagicBlockIndexer {
     market: string;
     amountUsdc: number;
     walletAddress: string;
-  }): Promise<{ transaction: Transaction; positionAddress: string; alreadyExists: boolean }> {
+  }): Promise<{
+    transaction: Transaction;
+    positionAddress: string;
+    alreadyExists: boolean;
+    topupReceiptAddress?: string;
+    topupNonce?: string;
+  }> {
     const marketPubkey = new PublicKey(params.market);
     const traderPubkey = new PublicKey(params.walletAddress);
     const [configPda] = this.getConfigPda();
@@ -433,9 +439,6 @@ export class MagicBlockIndexer {
     this.assertMarketTradeable(marketInfo);
 
     const positionInfo = await this.connection.getAccountInfo(positionPda, 'confirmed');
-    if (positionInfo?.owner.equals(DELEGATION_PROGRAM_ID)) {
-      throw new Error('Position already delegated in TEE; additional base deposits are not supported yet');
-    }
 
     const collateralMint = new PublicKey(marketInfo.account.collateral_token);
     const traderCollateral = await getAssociatedTokenAddress(collateralMint, traderPubkey);
@@ -466,6 +469,49 @@ export class MagicBlockIndexer {
 
     const instructionProgram = this.createInstructionProgram(this.connection);
     const tx = new Transaction();
+
+    if (positionInfo?.owner.equals(DELEGATION_PROGRAM_ID)) {
+      const nonce = BigInt(Date.now()) * BigInt(1000) + BigInt(Math.floor(Math.random() * 1000));
+      const [receiptPda] = this.getPositionTopupReceiptPda(marketPubkey, traderPubkey, nonce);
+
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          traderPubkey,
+          traderCollateral,
+          traderPubkey,
+          collateralMint
+        )
+      );
+
+      const topupIx = await instructionProgram.methods
+        .createPositionTopupReceipt(new BN(nonce.toString()), amount)
+        .accounts({
+          trader: traderPubkey,
+          config: configPda,
+          market: marketPubkey,
+          receipt: receiptPda,
+          collateralMint,
+          traderCollateral,
+          vault,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+
+      tx.add(topupIx);
+
+      const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = traderPubkey;
+
+      return {
+        transaction: tx,
+        positionAddress: positionPda.toBase58(),
+        alreadyExists: true,
+        topupReceiptAddress: receiptPda.toBase58(),
+        topupNonce: nonce.toString(),
+      };
+    }
 
     if (!positionInfo) {
       const openIx = await instructionProgram.methods
@@ -540,6 +586,8 @@ export class MagicBlockIndexer {
     amountUsdc: number;
     walletAddress: string;
     teeToken?: string;
+    topupReceiptAddress?: string;
+    topupNonce?: string;
   }): Promise<{ transaction: Transaction; positionAddress: string }> {
     const marketPubkey = new PublicKey(params.market);
     const traderPubkey = new PublicKey(params.walletAddress);
@@ -578,7 +626,11 @@ export class MagicBlockIndexer {
       ? asBigInt(privatePosition.collateral_available)
       : l1Available;
 
-    if (availableCollateral < BigInt(amountLamports)) {
+    const effectiveAvailableCollateral = params.topupReceiptAddress
+      ? availableCollateral + BigInt(amountLamports)
+      : availableCollateral;
+
+    if (effectiveAvailableCollateral < BigInt(amountLamports)) {
       throw new Error('Insufficient delegated collateral available for private trade');
     }
 
@@ -602,19 +654,36 @@ export class MagicBlockIndexer {
       tx.add(initIx);
     }
 
-    const buyIx = await instructionProgram.methods
-      .placePrivatePrediction(amount, params.side === 'yes')
-      .accountsPartial({
-        trader: traderPubkey,
-        config: configPda,
-        market: marketPubkey,
-        position: positionPda,
-        privatePosition: privatePositionPda,
-        magicProgram: MAGIC_PROGRAM_ID,
-        magicContext: MAGIC_CONTEXT_ID,
-      })
-      .instruction();
-    tx.add(buyIx);
+    if (params.topupReceiptAddress) {
+      const consumeAndBuyIx = await instructionProgram.methods
+        .consumeTopupAndPlacePrivatePredictionEr(amount, params.side === 'yes')
+        .accountsPartial({
+          trader: traderPubkey,
+          config: configPda,
+          market: marketPubkey,
+          position: positionPda,
+          privatePosition: privatePositionPda,
+          receipt: new PublicKey(params.topupReceiptAddress),
+          magicProgram: MAGIC_PROGRAM_ID,
+          magicContext: MAGIC_CONTEXT_ID,
+        })
+        .instruction();
+      tx.add(consumeAndBuyIx);
+    } else {
+      const buyIx = await instructionProgram.methods
+        .placePrivatePrediction(amount, params.side === 'yes')
+        .accountsPartial({
+          trader: traderPubkey,
+          config: configPda,
+          market: marketPubkey,
+          position: positionPda,
+          privatePosition: privatePositionPda,
+          magicProgram: MAGIC_PROGRAM_ID,
+          magicContext: MAGIC_CONTEXT_ID,
+        })
+        .instruction();
+      tx.add(buyIx);
+    }
 
     const { blockhash } = await this.ephemeralConnection.getLatestBlockhash('confirmed');
     tx.recentBlockhash = blockhash;
@@ -1319,6 +1388,98 @@ export class MagicBlockIndexer {
     };
   }
 
+  async delegateTopupReceipt(marketAddress: string, traderAddress: string, nonce: string) {
+    const marketPubkey = new PublicKey(marketAddress);
+    const traderPubkey = new PublicKey(traderAddress);
+    const receiptNonce = BigInt(nonce);
+    const [receiptPda] = this.getPositionTopupReceiptPda(marketPubkey, traderPubkey, receiptNonce);
+    const currentInfo = await this.connection.getAccountInfo(receiptPda, 'confirmed');
+    if (!currentInfo) throw new Error('Top-up receipt account not found');
+    if (currentInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+      return {
+        signature: null,
+        alreadyDelegated: true,
+        receiptAddress: receiptPda.toBase58(),
+      };
+    }
+
+    const config = await this.getProtocolConfig();
+    const admin = await this.requireMatchingKeypair(config.admin, 'admin');
+    const program = this.createProgramClient(this.connection, admin.keypair);
+    const [configPda] = this.getConfigPda();
+    const receiptPermission = permissionPdaFromAccount(receiptPda);
+
+    try {
+      const createReceiptPermissionIx = await program.methods
+        .createTopupReceiptPermission()
+        .accounts({
+          authority: admin.keypair.publicKey,
+          config: configPda,
+          receipt: receiptPda,
+          permission: receiptPermission,
+          permissionProgram: PERMISSION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+
+      await sendAndConfirmTransaction(
+        this.connection,
+        new Transaction().add(createReceiptPermissionIx),
+        [admin.keypair],
+        { commitment: 'confirmed' }
+      );
+    } catch (error) {
+      const message = (error as Error).message || '';
+      if (!message.includes('already') && !message.includes('in use')) {
+        throw error;
+      }
+    }
+
+    const bufferReceipt = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(receiptPda, PROGRAM_ID);
+    const delegationRecordReceipt = delegationRecordPdaFromDelegatedAccount(receiptPda);
+    const delegationMetadataReceipt = delegationMetadataPdaFromDelegatedAccount(receiptPda);
+
+    const delegatePermissionIx = createDelegatePermissionInstruction({
+      payer: admin.keypair.publicKey,
+      authority: [admin.keypair.publicKey, true],
+      permissionedAccount: [receiptPda, false],
+      ownerProgram: PERMISSION_PROGRAM_ID,
+      validator: new PublicKey(config.teeValidator),
+    });
+
+    const delegateReceiptIx = await program.methods
+      .delegateTopupReceiptIntoTee(
+        marketPubkey,
+        traderPubkey,
+        new BN(receiptNonce.toString())
+      )
+      .accounts({
+        authority: admin.keypair.publicKey,
+        config: configPda,
+        bufferReceipt,
+        delegationRecordReceipt,
+        delegationMetadataReceipt,
+        receipt: receiptPda,
+        ownerProgram: PROGRAM_ID,
+        delegationProgram: DELEGATION_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      new Transaction().add(delegatePermissionIx, delegateReceiptIx),
+      [admin.keypair],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      signature,
+      alreadyDelegated: false,
+      receiptAddress: receiptPda.toBase58(),
+    };
+  }
+
   private async delegatePrivatePosition(marketPubkey: PublicKey, traderPubkey: PublicKey) {
     const [privatePositionPda] = this.getPrivatePositionStatePda(marketPubkey, traderPubkey);
     const currentInfo = await this.connection.getAccountInfo(privatePositionPda, 'confirmed');
@@ -1809,6 +1970,19 @@ export class MagicBlockIndexer {
   private getPrivatePositionStatePda(market: PublicKey, trader: PublicKey): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from('private_position_state'), market.toBuffer(), trader.toBuffer()],
+      PROGRAM_ID
+    );
+  }
+
+  private getPositionTopupReceiptPda(
+    market: PublicKey,
+    trader: PublicKey,
+    nonce: bigint
+  ): [PublicKey, number] {
+    const nonceBuf = Buffer.alloc(8);
+    nonceBuf.writeBigUInt64LE(nonce);
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('position_topup_receipt'), market.toBuffer(), trader.toBuffer(), nonceBuf],
       PROGRAM_ID
     );
   }
