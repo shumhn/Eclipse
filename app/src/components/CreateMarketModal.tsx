@@ -394,6 +394,55 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
               </Button>
             </div>
           </div>
+        ) : loading ? (
+          /* Loading State Card */
+          <div className="flex flex-col items-center justify-center p-8 min-h-[400px]">
+            <div className="w-full max-w-md bg-[#0d0e10]/80 rounded-xl border border-white/5 p-8 shadow-2xl">
+              <div className="flex items-center justify-center mb-6">
+                 <Loader2 className="w-10 h-10 animate-spin text-eclipse-green" />
+              </div>
+              <h3 className="text-xl font-bold text-white text-center mb-6">Creating Market...</h3>
+              <div className="space-y-4">
+                {[
+                  { id: 'prep', label: 'Preparing market transaction...' },
+                  { id: 'sign', label: 'Waiting for wallet signature...' },
+                  { id: 'create', label: 'Creating market on-chain...' },
+                  ...(oracleKind === 'pythPrice' ? [
+                    { id: 'delegate', label: 'Delegating to Ephemeral Rollup...' },
+                    { id: 'finalize', label: 'Finalizing MagicBlock private state...' }
+                  ] : [])
+                ].map((step, index) => {
+                  const isCurrent = loadingStep === step.label;
+                  let isPast = false;
+                  
+                  const stepOrder = ['Preparing market transaction...', 'Waiting for wallet signature...', 'Creating market on-chain...', 'Delegating to Ephemeral Rollup...', 'Finalizing MagicBlock private state...'];
+                  const currentIndex = stepOrder.indexOf(loadingStep || '');
+                  const thisIndex = stepOrder.indexOf(step.label);
+                  
+                  if (currentIndex > thisIndex) isPast = true;
+
+                  return (
+                    <div key={step.id} className="flex items-center gap-4 text-sm">
+                      {isPast ? (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-eclipse-green/20 text-eclipse-green">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        </div>
+                      ) : isCurrent ? (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-eclipse-green/30 border-t-eclipse-green animate-spin"></div>
+                      ) : (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-white/30 text-[11px]">
+                          {index + 1}
+                        </div>
+                      )}
+                      <span className={`${isCurrent ? 'text-eclipse-green font-medium' : isPast ? 'text-gray-300' : 'text-gray-500'}`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         ) : (
           /* Form */
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
@@ -646,78 +695,21 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
               </div>
             )}
 
-            {/* Loading Steps UI */}
-            {loading && (
-              <div className="rounded-sm border border-white/5 bg-[#0d0e10]/80 p-4 mb-4">
-                <p className="text-sm font-semibold text-gray-200 mb-3">Creating Market...</p>
-                <div className="space-y-2.5">
-                  {[
-                    { id: 'prep', label: 'Preparing market transaction...' },
-                    { id: 'sign', label: 'Waiting for wallet signature...' },
-                    { id: 'create', label: 'Creating market on-chain...' },
-                    ...(oracleKind === 'pythPrice' ? [
-                      { id: 'delegate', label: 'Delegating to Ephemeral Rollup...' },
-                      { id: 'finalize', label: 'Finalizing MagicBlock private state...' }
-                    ] : [])
-                  ].map((step, index) => {
-                    // Determine state based on whether we've passed this step or are currently on it
-                    const isCurrent = loadingStep === step.label;
-                    let isPast = false;
-                    
-                    const stepOrder = ['Preparing market transaction...', 'Waiting for wallet signature...', 'Creating market on-chain...', 'Delegating to Ephemeral Rollup...', 'Finalizing MagicBlock private state...'];
-                    const currentIndex = stepOrder.indexOf(loadingStep || '');
-                    const thisIndex = stepOrder.indexOf(step.label);
-                    
-                    if (currentIndex > thisIndex) isPast = true;
-
-                    return (
-                      <div key={step.id} className="flex items-center gap-3 text-sm">
-                        {isPast ? (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-eclipse-green/20 text-eclipse-green">
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                          </div>
-                        ) : isCurrent ? (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-eclipse-green/30 border-t-eclipse-green animate-spin"></div>
-                        ) : (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 text-white/30 text-[10px]">
-                            {index + 1}
-                          </div>
-                        )}
-                        <span className={`${isCurrent ? 'text-eclipse-green font-medium' : isPast ? 'text-gray-300' : 'text-gray-500'}`}>
-                          {step.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Submit */}
             <div className="pt-2">
               <Button
                 type="submit"
                 className="w-full bg-eclipse-green hover:bg-eclipse-green text-white font-medium rounded-sm py-6 border-none shadow-lg shadow-eclipse-green/20 transition-all hover:scale-[1.02]"
                 disabled={
-                  loading ||
-                !isEndTimeInFuture ||
+                  !isEndTimeInFuture ||
                   (oracleKind === 'manual' && question.length < 10) ||
                   (oracleKind === 'pythPrice' &&
                     (Number(targetPriceUsd || 0) <= 0 ||
                       (priceQuestion.trim() || priceMarketQuestion).length < 10))
                 }
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    Creating Market...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-5 h-5 mr-2" />
-                    Create Market
-                  </>
-                )}
+                <Zap className="w-5 h-5 mr-2" />
+                Create Market
               </Button>
             </div>
 
