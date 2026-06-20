@@ -47,6 +47,7 @@ export default function TradePanel({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [depositSignature, setDepositSignature] = useState<string | null>(null);
   const [teeProof, setTeeProof] = useState<{
     found: boolean;
     slot: number | null;
@@ -178,6 +179,7 @@ export default function TradePanel({
     setLoading(true);
     setError(null);
     setSuccess(false);
+    setDepositSignature(null);
 
     try {
       const amountUsdc = parseFloat(amount);
@@ -198,11 +200,12 @@ export default function TradePanel({
             walletAddress,
           });
 
-          await signAndSend(
+          const depositSig = await signAndSend(
             setup.transaction,
             (tx) => phantom.signTransaction(tx),
             { sendTo: 'base' }
           );
+          setDepositSignature(depositSig);
 
           if (setup.topupReceiptAddress && setup.topupNonce) {
             await delegateTopupReceipt({
@@ -334,21 +337,12 @@ export default function TradePanel({
       <div className="flex items-center justify-between px-5 pt-4 pb-0">
         <div className="flex gap-6">
           <button
-            className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'buy' ? 'text-white' : 'text-white hover:text-white'}`}
+            className="pb-3 font-bold text-sm tracking-wide transition-all relative text-white"
             onClick={() => setTradeType('buy')}
           >
             Buy
             {tradeType === 'buy' && (
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
-            )}
-          </button>
-          <button
-            className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'sell' ? 'text-white' : 'text-white hover:text-white'}`}
-            onClick={() => setTradeType('sell')}
-          >
-            Sell
-            {tradeType === 'sell' && (
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#ef4444] to-[#f87171]" />
             )}
           </button>
         </div>
@@ -491,19 +485,22 @@ export default function TradePanel({
       
       {/* Success Modal/View */}
       {success && txSignature && (
-        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col p-6 rounded-xl">
-          <div className="flex flex-col items-center justify-center flex-1 text-center">
-            <div className="w-16 h-16 rounded-full bg-[#16a34a]/20 flex items-center justify-center mb-5">
+        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col px-6 pb-6 pt-2 rounded-xl">
+          <div className="flex flex-col items-center justify-center pt-0 pb-6 px-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-[#16a34a]/20 flex items-center justify-center mb-4">
               <CheckCircle className="w-8 h-8 text-[#4ade80]" />
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Trade Submitted</h3>
-            <p className="text-sm text-white/80 mb-6">
-              {positionsHidden
-                ? 'Your private trade was submitted to MagicBlock TEE/PER.'
-                : 'Your trade has been submitted.'}
+            <p className="text-sm text-white/60 mb-5 max-w-[280px]">
+              {positionsHidden 
+                ? 'Your private trade was submitted to MagicBlock TEE/PER.' 
+                : 'Your trade was submitted directly on Solana.'}
             </p>
+
             {positionsHidden ? (
-              <div className="w-full text-left mb-6 rounded-xl border border-[#16a34a]/25 bg-[#16a34a]/10 p-4">
+              <div className="space-y-4 w-full mb-6">
+
+                <div className="w-full text-left rounded-xl border border-[#4ade80]/20 bg-[#4ade80]/5 p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>
                     <div className="text-sm font-bold text-[#4ade80]">TEE Trade Proof</div>
@@ -545,31 +542,49 @@ export default function TradePanel({
                       {JSON.stringify(teeProof?.err)}
                     </div>
                   )}
-                  <div className="pt-2 border-t border-white/10">
-                    <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
-                      <a 
-                        href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex-1 flex items-center gap-2 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
-                        title="View on Solana Explorer"
-                      >
-                        <span className="bg-[#16a34a]/20 px-2 py-1 rounded border border-[#16a34a]/30 font-sans font-bold uppercase tracking-wider text-[10px] text-[#4ade80]">View Tx</span>
-                        <span className="truncate underline decoration-[#16a34a]/40 underline-offset-4">{txSignature}</span>
-                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                      </a>
-                      <button
-                        type="button"
-                        onClick={copySignature}
-                        className="hover:bg-black/45 p-1 rounded transition-colors"
-                        title="Copy Signature"
-                      >
-                        {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
-                      </button>
+                  <div className="pt-3 border-t border-white/10">
+                    <div className="w-full flex flex-col rounded-lg bg-black/40 border border-white/5 overflow-hidden divide-y divide-white/5">
+                      {depositSignature && (
+                        <div className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-white/[0.02] transition-colors">
+                          <a 
+                            href={`https://solscan.io/tx/${depositSignature}?cluster=devnet`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-white/70 hover:text-white transition-colors"
+                            title="View Deposit on Solscan"
+                          >
+                            <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-white/50 group-hover:text-white/70 transition-colors">L1 Deposit</span>
+                            <span className="truncate underline decoration-white/20 underline-offset-4">{depositSignature}</span>
+                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                          </a>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-white/[0.02] transition-colors">
+                        <a 
+                          href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
+                          title="View on Solana Explorer"
+                        >
+                          <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/80 transition-colors">TEE Trade</span>
+                          <span className="truncate underline decoration-[#16a34a]/40 underline-offset-4">{txSignature}</span>
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={copySignature}
+                          className="hover:bg-white/10 p-1.5 rounded transition-colors"
+                          title="Copy Signature"
+                        >
+                          {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+            </div>
             ) : (
               <div className="w-full text-left mb-6 rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="text-sm font-bold text-white mb-3">Transaction Receipt</div>
@@ -579,10 +594,10 @@ export default function TradePanel({
                       href={`https://solscan.io/tx/${txSignature}?cluster=devnet`} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="flex-1 flex items-center gap-2 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
+                      className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
                       title="View on Solscan"
                     >
-                      <span className="bg-white/10 px-2 py-1 rounded border border-white/20 font-sans font-bold uppercase tracking-wider text-[10px] text-white/80">View Tx</span>
+                      <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-white/50 group-hover:text-white/70 transition-colors">View Tx</span>
                       <span className="truncate underline decoration-[#16a34a]/40 underline-offset-4">{txSignature}</span>
                       <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                     </a>
@@ -599,7 +614,7 @@ export default function TradePanel({
               </div>
             )}
           </div>
-          <div className="w-full flex items-center gap-3 mt-auto">
+          <div className="absolute bottom-2 left-6 right-6 flex items-center gap-3">
             <Link href={`/portfolio?market=${marketAddress}`} className="flex-1">
               <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
                 View Trade

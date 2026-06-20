@@ -77,7 +77,7 @@ export default function RulesSection({
                 <p>
                   This market will resolve to &quot;Yes&quot; if the{' '}
                   <span className="text-white font-medium">Pyth Network</span> price feed for{' '}
-                  <span className="text-white font-medium">{asset}/USD</span> reports a price{' '}
+                  <span className="text-white font-medium">{asset}</span> reports a price{' '}
                   <span className="text-white font-medium">{direction}</span>{' '}
                   <span className="text-white font-medium">{formattedTarget}</span> at the resolution
                   timestamp of{' '}
@@ -98,7 +98,7 @@ export default function RulesSection({
                   is cranked automatically when the market&apos;s end time is reached.
                 </p>
                 <p>
-                  Please note that the outcome of this market depends solely on the Pyth {asset}/USD price
+                  Please note that the outcome of this market depends solely on the Pyth {asset} price
                   feed at the exact resolution timestamp. Prices from other oracles, exchanges, or off-chain
                   sources will not be considered for the resolution of this market.
                 </p>
