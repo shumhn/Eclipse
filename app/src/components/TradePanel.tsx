@@ -356,7 +356,7 @@ export default function TradePanel({
           {isConnected && (
             <Link
               href={existingPositionUrl}
-              className="group flex items-center gap-1.5 text-[11px] font-medium text-white/50 hover:text-white tracking-wide uppercase transition-colors"
+              className="group flex items-center gap-1.5 text-[11px] font-medium text-[#4ade80] hover:text-[#22c55e] tracking-wide uppercase transition-colors"
             >
               My Position
               <ExternalLink className="w-3.5 h-3.5 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-300" />
