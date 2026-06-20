@@ -3,7 +3,7 @@
   "framework": "nextjs",
   "crons": [
     {
-      "path": "/api/crank/run?limit=10",
+      "path": "/api/crank/run?limit=1",
       "schedule": "0 0 * * *"
     }
   ]

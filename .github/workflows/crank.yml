@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 2
     env:
       APP_URL: ${{ vars.ECLIPSE_APP_URL || 'https://eclipse-predict.vercel.app' }}
+      CRANK_LIMIT: ${{ vars.CRANK_LIMIT || '1' }}
       CRANK_SECRET: ${{ secrets.CRANK_SECRET }}
     steps:
       - name: Trigger Eclipse crank
@@ -20,7 +21,7 @@ jobs:
             exit 1
           fi
 
-          curl --fail --show-error --silent --max-time 55 \
+          curl --fail --show-error --silent --max-time 65 \
             -H "Authorization: Bearer $CRANK_SECRET" \
             -H "x-crank-secret: $CRANK_SECRET" \
-            "$APP_URL/api/crank/run?limit=10"
+            "$APP_URL/api/crank/run?limit=$CRANK_LIMIT"
