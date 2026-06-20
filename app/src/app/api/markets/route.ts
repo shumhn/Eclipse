@@ -21,7 +21,7 @@ export async function GET() {
 
     // Filter out test markets from the UI
     mergedMarkets = mergedMarkets.filter(
-      (market) => !market.question?.toLowerCase().startsWith('test market')
+      (market) => !market.account?.question?.toLowerCase().startsWith('test market')
     );
 
     return NextResponse.json({
