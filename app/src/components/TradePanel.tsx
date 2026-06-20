@@ -548,7 +548,7 @@ export default function TradePanel({
                   <div className="pt-2 border-t border-white/10">
                     <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
                       <a 
-                        href={`https://solscan.io/tx/${txSignature}?cluster=devnet`} 
+                        href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="truncate font-mono text-[11px] text-[#4ade80] hover:text-[#22c55e] hover:underline flex items-center gap-1.5"
