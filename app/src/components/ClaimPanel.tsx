@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
-import { CheckCircle, Trophy, Info, Lock, RefreshCw, ExternalLink } from 'lucide-react';
-import { Market, Position, fetchPosition } from '@/lib/api';
+import { CheckCircle, Trophy, Info, Lock, RefreshCw, ExternalLink, CircleDashed, CheckCircle2 } from 'lucide-react';
+import { Market, Position, fetchPosition, explorerTxUrl } from '@/lib/api';
 import { prepareSettleTransaction, prepareClaimTransaction } from '@/lib/trading';
 import { getOrFetchTeeAuthToken, signAndSend } from '@/lib/magicblock';
 import { PublicKey } from '@solana/web3.js';
@@ -41,6 +41,8 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<ClaimStep>('idle');
+  const [settleSignature, setSettleSignature] = useState<string | null>(null);
+  const [commitSignature, setCommitSignature] = useState<string | null>(null);
   const [claimSignature, setClaimSignature] = useState<string | null>(null);
   const canSettleInTee = Boolean(market.delegated);
 
@@ -130,11 +132,12 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
           walletAddress,
         });
 
-        await signAndSend(
+        const settleSig = await signAndSend(
           settleSetup.transaction,
           (tx) => phantom.signTransaction(tx),
           { sendTo: 'ephemeral', ephemeralToken: teeToken }
         );
+        setSettleSignature(settleSig);
 
         setStep('committing');
         const commitResponse = await fetch('/api/trading/commit-position', {
@@ -146,9 +149,12 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
           }),
         });
 
+        const json = await commitResponse.json().catch(() => null);
         if (!commitResponse.ok) {
-          const json = await commitResponse.json().catch(() => null);
           throw new Error(json?.error || 'Failed to finalize private position on Solana');
+        }
+        if (json?.data?.commitSignature) {
+          setCommitSignature(json.data.commitSignature);
         }
 
         currentPosition = await loadPosition();
@@ -280,25 +286,17 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
             <p className="text-sm text-eclipse-text-muted mb-4">
               Your winnings have been transferred to your wallet.
             </p>
-            {claimSignature && (
-              <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="text-sm font-bold text-white mb-3">Transaction Receipt</div>
-                <div className="pt-2 border-t border-white/10">
-                  <div className="flex w-full items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
-                    <a 
-                      href={`https://solscan.io/tx/${claimSignature}?cluster=devnet`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="truncate font-mono text-[11px] text-[#4ade80] hover:text-[#22c55e] hover:underline flex items-center gap-1.5"
-                      title="View on Solscan"
-                    >
-                      {claimSignature}
-                      <ExternalLink className="w-3 h-3 shrink-0" />
-                    </a>
-                  </div>
-                </div>
+            <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+              <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-4 border-b border-white/[0.06]">
+                <h3 className="font-bold text-white tracking-tight">Proof of Execution</h3>
+                <p className="text-xs text-eclipse-text-muted mt-1">Honest devnet evidence for your claim</p>
               </div>
-            )}
+              <div className="p-4 space-y-3">
+                {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
+                {commitSignature && <ProofLink label="Finalize position on Solana" signature={commitSignature} />}
+                {claimSignature && <ProofLink label="Claim winnings to wallet" signature={claimSignature} />}
+              </div>
+            </div>
           </div>
         ) : step === 'noWinnings' ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
@@ -339,6 +337,42 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
               Refresh Position
             </button>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProofLink({ label, signature, isTee }: { label: string; signature?: string; isTee?: boolean }) {
+  if (!signature) return null;
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-eclipse-green/20 bg-eclipse-green/5 p-3 text-sm">
+      <div className="flex items-center gap-3">
+        <CheckCircle2 className="h-4 w-4 text-eclipse-green drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+        <span className="font-medium text-white/90">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {isTee ? (
+          <a
+            href={`https://explorer.solana.com/tx/${signature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-medium text-eclipse-green hover:text-eclipse-green-light transition-colors text-xs bg-eclipse-green/10 px-2 py-1 rounded-md hover:bg-eclipse-green/20"
+          >
+            View tx
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : (
+          <a
+            href={explorerTxUrl(signature)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-medium text-eclipse-green hover:text-eclipse-green-light transition-colors text-xs bg-eclipse-green/10 px-2 py-1 rounded-md hover:bg-eclipse-green/20"
+          >
+            View tx
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
         )}
       </div>
     </div>
