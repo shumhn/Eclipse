@@ -238,37 +238,43 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
       </div>
 
       <div className="p-5">
-        <div className="flex items-start gap-3 p-3.5 bg-eclipse-panel border border-white/5 rounded-xl text-xs mb-5 shadow-inner">
-          <Info className="w-4 h-4 text-eclipse-text-muted shrink-0 mt-0.5" />
-          <div className="text-eclipse-text-muted leading-relaxed">
-            {!position
-              ? 'Connect the wallet that traded this market. We will check its private position before allowing claim.'
-              : !isPositionSettled && canSettleInTee
-                ? 'First settle your private position inside MagicBlock. After that, claimable payout becomes visible on Solana.'
-                : cannotRecoverHere
-                  ? 'This position is not settled, but the market is already back on L1. A keeper/admin recovery flow is needed for this old market.'
-                  : isPositionSettled && hasClaimableWinnings
-                    ? `Your settled payout is ${formatUsdc(remainingClaimable)} USDC.`
-                    : 'Your position is settled, but there are no winnings to claim for this wallet.'}
-          </div>
-        </div>
+        {step !== 'success' && (
+          <>
+            <div className="flex items-start gap-3 p-3.5 bg-eclipse-panel border border-white/5 rounded-xl text-xs mb-5 shadow-inner">
+              <Info className="w-4 h-4 text-eclipse-text-muted shrink-0 mt-0.5" />
+              <div className="text-eclipse-text-muted leading-relaxed">
+                {!position
+                  ? 'Connect the wallet that traded this market. We will check its private position before allowing claim.'
+                  : !isPositionSettled && canSettleInTee
+                    ? 'First settle your private position inside MagicBlock. After that, claimable payout becomes visible on Solana.'
+                    : cannotRecoverHere
+                      ? 'This position is not settled, but the market is already back on L1. A keeper/admin recovery flow is needed for this old market.'
+                      : isPositionSettled && isPositionClaimed
+                        ? `Your winnings of ${formatUsdc(claimedAmount)} USDC have been successfully claimed.`
+                        : isPositionSettled && hasClaimableWinnings
+                          ? `Your settled payout is ${formatUsdc(remainingClaimable)} USDC.`
+                          : 'Your position is settled, but there are no winnings to claim for this wallet.'}
+              </div>
+            </div>
 
-        {position && (
-          <div className="mb-6 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center">
-              <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1">Position</div>
-              <div className="font-bold text-white tracking-wide">
-                {isPositionSettled ? 'Settled' : 'Needs settlement'}
+            {position && (
+              <div className="mb-6 grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center">
+                  <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1">Position</div>
+                  <div className="font-bold text-white tracking-wide">
+                    {isPositionSettled ? 'Settled' : 'Needs settlement'}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-br from-eclipse-green/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1 relative z-10">Claimable</div>
+                  <div className={`font-bold tracking-wide relative z-10 ${isPositionSettled ? 'text-eclipse-green' : 'text-eclipse-text-muted'}`}>
+                    {isPositionSettled ? `${formatUsdc(remainingClaimable)} USDC` : 'Hidden'}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 flex flex-col items-center justify-center relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-eclipse-green/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="text-eclipse-text-muted text-xs uppercase tracking-widest mb-1 relative z-10">Claimable</div>
-              <div className="font-bold text-eclipse-green tracking-wide relative z-10">
-                {formatUsdc(remainingClaimable)} USDC
-              </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
 
         {error && (
@@ -278,17 +284,28 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
         )}
 
         {step === 'success' ? (
-          <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden mb-4">
-            <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-4 border-b border-white/[0.06]">
-              <h3 className="font-bold text-white tracking-tight">Proof of Execution</h3>
-              <p className="text-xs text-eclipse-text-muted mt-1">Honest devnet evidence for your claim</p>
+          <>
+            <div className="flex flex-col items-center justify-center pt-1 pb-3 text-center">
+              <div className="w-10 h-10 rounded-full bg-eclipse-green/10 flex items-center justify-center mb-2">
+                <CheckCircle className="w-5 h-5 text-eclipse-green" />
+              </div>
+              <h3 className="text-base font-bold text-white mb-0.5 tracking-tight">Claim Successful!</h3>
+              <p className="text-xs text-eclipse-text-muted">
+                Your winnings have been securely transferred to your wallet.
+              </p>
             </div>
-            <div className="p-4 space-y-3">
-              {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
-              {commitSignature && <ProofLink label="Undelegate position to Solana" signature={commitSignature} isTee={true} />}
-              {claimSignature && <ProofLink label="Claim winnings to wallet" signature={claimSignature} />}
+            <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden mb-4 mt-1">
+              <div className="bg-gradient-to-b from-white/[0.04] to-transparent px-4 py-3 border-b border-white/[0.06]">
+                <h3 className="font-bold text-white tracking-tight text-sm">Proof of Execution</h3>
+                <p className="text-[11px] text-eclipse-text-muted mt-0.5">Honest devnet evidence for your claim</p>
+              </div>
+              <div className="p-3 space-y-2">
+                {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
+                {commitSignature && <ProofLink label="Undelegate position" signature={commitSignature} isTee={true} />}
+                {claimSignature && <ProofLink label="Claim winnings" signature={claimSignature} />}
+              </div>
             </div>
-          </div>
+          </>
         ) : step === 'noWinnings' ? (
           <div className="flex flex-col items-center justify-center py-6 text-center">
             <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 border border-white/10">
@@ -338,7 +355,7 @@ function ProofLink({ label, signature, isTee }: { label: string; signature?: str
   if (!signature) return null;
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-lg border border-eclipse-green/20 bg-eclipse-green/5 p-3 text-sm">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-eclipse-green/20 bg-eclipse-green/5 px-3 py-2 text-sm">
       <div className="flex items-center gap-3">
         <CheckCircle2 className="h-4 w-4 text-eclipse-green drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
         <span className="font-medium text-white/90">{label}</span>

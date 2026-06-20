@@ -547,34 +547,12 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
 
             {/* Oracle Type */}
             <div className="space-y-3 rounded-sm border border-white/10 bg-white/[0.02] p-4">
-              <label className="block font-medium text-gray-200">Resolution Source</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOracleKind('pythPrice')}
-                  className={`rounded-sm border p-3 text-center text-sm font-medium transition-all ${
-                    oracleKind === 'pythPrice' 
-                      ? 'bg-eclipse-green/20 border-eclipse-green/50 text-eclipse-green' 
-                      : 'bg-white/[0.04] border-white/10 text-gray-400 hover:bg-white/[0.08] hover:text-gray-200'
-                  }`}
-                >
-                  MagicBlock Pyth
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOracleKind('manual')}
-                  className={`rounded-sm border p-3 text-center text-sm font-medium transition-all ${
-                    oracleKind === 'manual' 
-                      ? 'bg-eclipse-green/20 border-eclipse-green/50 text-eclipse-green' 
-                      : 'bg-white/[0.04] border-white/10 text-gray-400 hover:bg-white/[0.08] hover:text-gray-200'
-                  }`}
-                >
-                  Manual Oracle
-                </button>
+              <label className="block font-medium text-gray-200 mb-2">Resolution Source</label>
+              <div className="rounded-sm border border-eclipse-green/30 bg-eclipse-green/10 p-3 mb-4 flex items-center justify-between">
+                <span className="text-sm font-medium text-eclipse-green">MagicBlock Pyth</span>
+                <span className="text-xs text-eclipse-green/70">Private Price Feed</span>
               </div>
-
-              {oracleKind === 'pythPrice' ? (
-                <div className="space-y-3 mt-4">
+              <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-2">
                     <select
                       value={oracleAsset}
@@ -694,13 +672,7 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                     </p>
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-400 mt-4">
-                  <Zap className="w-4 h-4 text-eclipse-green" />
-                  <span>Uses the configured <strong className="text-gray-200">protocol oracle</strong> for manual resolution.</span>
-                </div>
-              )}
-            </div>
+              </div>
 
             {/* Error */}
             {error && (
@@ -717,10 +689,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                 className="w-full bg-eclipse-green hover:bg-eclipse-green text-white font-medium rounded-sm py-6 border-none shadow-lg shadow-eclipse-green/20 transition-all hover:scale-[1.02]"
                 disabled={
                   !isEndTimeInFuture ||
-                  (oracleKind === 'manual' && question.length < 10) ||
-                  (oracleKind === 'pythPrice' &&
-                    (Number(targetPriceUsd || 0) <= 0 ||
-                      (priceQuestion.trim() || priceMarketQuestion).length < 10))
+                  (Number(targetPriceUsd || 0) <= 0 ||
+                    (priceQuestion.trim() || priceMarketQuestion).length < 10)
                 }
               >
                 <Zap className="w-5 h-5 mr-2" />
