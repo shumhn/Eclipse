@@ -465,37 +465,6 @@ export default function TradePanel({
           </div>
         )}
 
-        {/* Your Position */}
-        {(hasPrivateExposure || privateBalanceLamports > BigInt(0)) && (
-          <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-            <div className="text-xs font-bold text-white/50 uppercase tracking-widest mb-3">Your Position</div>
-            <div className="space-y-2.5">
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">Available USDC</span>
-                <span className="text-[#4ade80] font-medium tabular-nums">{formatUsdcUnits(privateBalanceLamports)}</span>
-              </div>
-              {yesSharesLamports > BigInt(0) && (
-                <>
-                  <div className="h-px bg-white/[0.04]" />
-                  <div className="flex justify-between text-[13px]">
-                    <span className="text-white/80">Yes Shares</span>
-                    <span className="text-white font-medium tabular-nums">{formatUsdcUnits(yesSharesLamports)}</span>
-                  </div>
-                </>
-              )}
-              {noSharesLamports > BigInt(0) && (
-                <>
-                  <div className="h-px bg-white/[0.04]" />
-                  <div className="flex justify-between text-[13px]">
-                    <span className="text-white/80">No Shares</span>
-                    <span className="text-white font-medium tabular-nums">{formatUsdcUnits(noSharesLamports)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Trade Action */}
         {!isConnected ? (
           <button className="w-full py-4 bg-white text-black font-bold rounded-lg transition-all duration-200 text-sm tracking-wide hover:shadow-[0_0_30px_rgba(255,255,255,0.12)] active:scale-[0.98]">
