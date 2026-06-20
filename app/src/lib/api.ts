@@ -136,6 +136,30 @@ export async function fetchMarkets(): Promise<Market[]> {
   return json.data?.data || [];
 }
 
+export async function trackNewMarket(marketAddress: string): Promise<void> {
+  const res = await fetch(`/api/markets/${marketAddress}/track`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    console.error('Failed to start tracking market:', await res.text());
+  }
+}
+
+export async function fetchDecryptedMarketState(marketAddress: string, teeToken: string) {
+  const res = await fetch(`/api/markets/${marketAddress}/private-state`, {
+    headers: {
+      Authorization: `Bearer ${teeToken}`,
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('Failed to fetch decrypted private state:', text);
+    throw new Error(`Failed to fetch decrypted private state: ${text}`);
+  }
+  const data = await res.json();
+  return data.privateState;
+}
+
 export async function fetchMarket(marketId: string): Promise<Market | null> {
   const res = await fetch(`${API_BASE}/api/markets/${marketId}`);
   const json = await parseApiResponse<Market>(res, 'Failed to fetch market');
@@ -224,6 +248,7 @@ export interface CreateMarketResult {
   delegationSignature?: string | null;
   creatorPositionDelegationSignature?: string | null;
   privateStateInitializationSignature?: string | null;
+  privateStateSnapshot?: Record<string, unknown> | null;
   creatorPosition?: string;
   sportsMarket?: SportsMarketMetadata;
   tracked: {
@@ -359,11 +384,11 @@ export interface TrackedMarketsResponse {
 }
 
 export function explorerAccountUrl(address: string): string {
-  return `https://explorer.solana.com/address/${address}?cluster=devnet`;
+  return `https://solscan.io/account/${address}?cluster=devnet`;
 }
 
 export function explorerTxUrl(signature: string): string {
-  return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+  return `https://solscan.io/tx/${signature}?cluster=devnet`;
 }
 
 export async function fetchTrackedMarkets(): Promise<TrackedMarketsResponse> {

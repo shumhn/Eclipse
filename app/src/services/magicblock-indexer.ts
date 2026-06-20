@@ -917,6 +917,30 @@ export class MagicBlockIndexer {
       }
     );
 
+    // Read the private state immediately while we still have the authenticated connection
+    let privateStateSnapshot: Record<string, unknown> | null = null;
+    try {
+      const [privateStatePda] = this.getPrivateMarketStatePda(marketPda);
+      const privateInfo = await authenticatedEphemeralConnection.getAccountInfo(privateStatePda, 'confirmed');
+      if (privateInfo) {
+        const decoded = this.decodePrivateMarketState(privateInfo.data);
+        privateStateSnapshot = {
+          market: pk(decoded.market),
+          collateralMint: pk(decoded.collateral_mint),
+          endTime: decoded.end_time.toString(),
+          createdAt: decoded.created_at.toString(),
+          reserves: decoded.reserves.toString(),
+          yesSupply: decoded.yes_supply.toString(),
+          noSupply: decoded.no_supply.toString(),
+          status: decoded.status,
+          outcome: decoded.outcome,
+          bump: decoded.bump,
+        };
+      }
+    } catch (e) {
+      console.warn('[createPrivacyMarket] Could not read private state snapshot:', (e as Error).message);
+    }
+
     const delegatedMarket = await this.getMarketInfo(marketPda.toBase58());
 
     return {
@@ -928,6 +952,7 @@ export class MagicBlockIndexer {
       delegationSignature: delegation.signature,
       creatorPositionDelegationSignature: positionDelegation.signature,
       privateStateInitializationSignature: initPrivateStateSignature,
+      privateStateSnapshot,
       creator: creator.keypair.publicKey.toBase58(),
       creatorSource: creator.source,
     };

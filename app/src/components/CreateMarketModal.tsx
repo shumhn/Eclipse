@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
-import { X, Zap, AlertCircle, CheckCircle, Loader2, Calendar, Clock, ExternalLink } from 'lucide-react';
+import { PublicKey } from '@solana/web3.js';
+import { X, Zap, AlertCircle, CheckCircle, CheckCircle2, CircleDashed, Loader2, Calendar, Clock, ExternalLink, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   CreateMarketResult,
@@ -10,9 +11,12 @@ import {
   explorerTxUrl,
   finalizeCreateMarket,
   prepareCreateMarket,
+  fetchDecryptedMarketState,
 } from '@/lib/api';
 import { signAndSend } from '@/lib/magicblock';
+import { getOrFetchTeeAuthToken } from '@/lib/magicblock/client';
 import { useMagicBlockLivePriceFeeds } from '@/hooks/useMagicBlockLivePriceFeeds';
+import ReceiptModal from '@/components/ReceiptModal';
 import {
   DEFAULT_PRICE_FEED_SYMBOL,
   PRICE_FEED_BY_SYMBOL,
@@ -60,6 +64,9 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<CreateMarketResult | null>(null);
+  const [receiptData, setReceiptData] = useState<any>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
 
   const solanaAccount = accounts?.find((a) => a.addressType === AddressType.solana);
   const walletAddress = solanaAccount?.address || '';
@@ -365,13 +372,46 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
               </div>
             </div>
 
-            <div className="mb-4 rounded-sm border border-eclipse-green/20 bg-eclipse-green/10 p-4 text-sm text-eclipse-green">
-              <p className="font-medium text-eclipse-green">Real devnet proof</p>
-              <div className="mt-3 space-y-2">
-                <ProofLink label="Create market" signature={success.signature} />
-                <ProofLink label="Delegate market" signature={success.delegationSignature || undefined} />
+            <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+              <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-4 border-b border-white/[0.06]">
+                <h3 className="font-bold text-white tracking-tight">Proof of Execution</h3>
+                <p className="text-xs text-eclipse-text-muted mt-1">Honest devnet evidence for this market's creation</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <ProofLink label="Create market on Solana" signature={success.signature} />
+                <ProofLink label="Delegate to MagicBlock TEE" signature={success.delegationSignature || undefined} />
                 <ProofLink label="Delegate creator position" signature={success.creatorPositionDelegationSignature || undefined} />
-                <ProofLink label="Initialize private market state" signature={success.privateStateInitializationSignature || undefined} />
+                <ProofLink 
+                  label="Initialize private market state" 
+                  signature={success.privateStateInitializationSignature || undefined} 
+                  isTee={true} 
+                  onViewReceipt={async () => {
+                    try {
+                      setReceiptLoading(true);
+                      // Use the snapshot captured at creation time (most reliable)
+                      if (success.privateStateSnapshot) {
+                        setReceiptData(success.privateStateSnapshot);
+                        setIsReceiptModalOpen(true);
+                        return;
+                      }
+                      // Fallback: try fetching from TEE RPC
+                      if (!isConnected || !accounts || !accounts[0]?.address || !(window as any).solana) return;
+                      const pubKey = new PublicKey(accounts[0].address);
+                      const token = await getOrFetchTeeAuthToken(pubKey, async (msg) => {
+                        const { signature } = await (window as any).solana.signMessage(msg, 'utf8');
+                        return signature;
+                      });
+                      const state = await fetchDecryptedMarketState(success.marketAddress, token);
+                      setReceiptData(state);
+                      setIsReceiptModalOpen(true);
+                    } catch (err: any) {
+                      console.error("Failed to fetch receipt:", err);
+                    } finally {
+                      setReceiptLoading(false);
+                    }
+                  }}
+                  isLoadingReceipt={receiptLoading}
+                />
               </div>
             </div>
 
@@ -717,32 +757,65 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
           </form>
         )}
       </div>
+
+      <ReceiptModal 
+        isOpen={isReceiptModalOpen} 
+        onClose={() => setIsReceiptModalOpen(false)} 
+        data={receiptData} 
+      />
     </div>
   );
 }
 
-function ProofLink({ label, signature }: { label: string; signature?: string }) {
+function ProofLink({ label, signature, isTee, onViewReceipt, isLoadingReceipt }: { label: string; signature?: string; isTee?: boolean; onViewReceipt?: () => void; isLoadingReceipt?: boolean }) {
   if (!signature) {
     return (
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-eclipse-green/80">{label}</span>
-        <span className="font-medium text-eclipse-green/50">Pending</span>
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm">
+        <div className="flex items-center gap-3">
+          <CircleDashed className="h-4 w-4 text-eclipse-text-muted/50" />
+          <span className="text-eclipse-text-muted/70">{label}</span>
+        </div>
+        <span className="font-medium text-eclipse-text-muted/40 text-xs">Pending</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-eclipse-green">{label}</span>
-      <a
-        href={explorerTxUrl(signature)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 font-medium text-eclipse-green hover:text-eclipse-green transition-colors"
-      >
-        View tx
-        <ExternalLink className="h-3 w-3" />
-      </a>
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-eclipse-green/20 bg-eclipse-green/5 p-3 text-sm">
+      <div className="flex items-center gap-3">
+        <CheckCircle2 className="h-4 w-4 text-eclipse-green drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+        <span className="font-medium text-white/90">{label}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {isTee ? (
+          <>
+            <span className="inline-flex items-center gap-1.5 font-medium text-eclipse-green text-xs bg-eclipse-green/10 px-2 py-1 rounded-md border border-eclipse-green/20">
+              <Zap className="h-3 w-3" />
+              TEE Executed
+            </span>
+            {onViewReceipt && (
+              <button
+                onClick={onViewReceipt}
+                disabled={isLoadingReceipt}
+                className="inline-flex items-center gap-1.5 font-medium text-white hover:text-white transition-colors text-xs bg-white/5 hover:bg-white/10 px-2 py-1 rounded-md border border-white/10 disabled:opacity-50"
+              >
+                {isLoadingReceipt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}
+                View Receipt
+              </button>
+            )}
+          </>
+        ) : (
+        <a
+          href={explorerTxUrl(signature)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 font-medium text-eclipse-green hover:text-eclipse-green-light transition-colors text-xs bg-eclipse-green/10 px-2 py-1 rounded-md hover:bg-eclipse-green/20"
+        >
+          View tx
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+        )}
+      </div>
     </div>
   );
 }
