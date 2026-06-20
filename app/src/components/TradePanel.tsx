@@ -48,6 +48,7 @@ export default function TradePanel({
   const [success, setSuccess] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [depositSignature, setDepositSignature] = useState<string | null>(null);
+  const [delegateSignature, setDelegateSignature] = useState<string | null>(null);
   const [teeProof, setTeeProof] = useState<{
     found: boolean;
     slot: number | null;
@@ -180,6 +181,7 @@ export default function TradePanel({
     setError(null);
     setSuccess(false);
     setDepositSignature(null);
+    setDelegateSignature(null);
 
     try {
       const amountUsdc = parseFloat(amount);
@@ -208,11 +210,12 @@ export default function TradePanel({
           setDepositSignature(depositSig);
 
           if (setup.topupReceiptAddress && setup.topupNonce) {
-            await delegateTopupReceipt({
+            const { signature: delSig } = await delegateTopupReceipt({
               marketAddress,
               walletAddress,
               nonce: setup.topupNonce,
             });
+            if (delSig) setDelegateSignature(delSig);
             topupReceiptAddress = setup.topupReceiptAddress;
             topupNonce = setup.topupNonce;
             // Give PER time to see the newly delegated receipt
@@ -220,10 +223,11 @@ export default function TradePanel({
             return;
           }
 
-          await delegatePrivatePosition({
+          const { signature: delSig } = await delegatePrivatePosition({
             marketAddress,
             walletAddress,
           });
+          if (delSig) setDelegateSignature(delSig);
           // Give PER time to see the newly delegated position
           await new Promise((r) => setTimeout(r, 2000));
         };
@@ -550,11 +554,26 @@ export default function TradePanel({
                             href={`https://solscan.io/tx/${depositSignature}?cluster=devnet`} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-white/70 hover:text-white transition-colors"
+                            className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80]/90 hover:text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.4)] hover:drop-shadow-[0_0_12px_rgba(74,222,128,0.7)] transition-all duration-300"
                             title="View Deposit on Solscan"
                           >
-                            <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-white/50 group-hover:text-white/70 transition-colors">L1 Deposit</span>
-                            <span className="truncate underline decoration-white/20 underline-offset-4">{depositSignature}</span>
+                            <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/90 transition-colors">L1 Deposit</span>
+                            <span className="truncate underline decoration-[#16a34a]/40 group-hover:decoration-[#4ade80]/60 underline-offset-4 transition-colors">{depositSignature}</span>
+                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                          </a>
+                        </div>
+                      )}
+                      {delegateSignature && (
+                        <div className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-white/[0.02] transition-colors">
+                          <a 
+                            href={`https://solscan.io/tx/${delegateSignature}?cluster=devnet`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80]/90 hover:text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.4)] hover:drop-shadow-[0_0_12px_rgba(74,222,128,0.7)] transition-all duration-300"
+                            title="View Delegation on Solscan"
+                          >
+                            <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/90 transition-colors">L1 Delegate</span>
+                            <span className="truncate underline decoration-[#16a34a]/40 group-hover:decoration-[#4ade80]/60 underline-offset-4 transition-colors">{delegateSignature}</span>
                             <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                           </a>
                         </div>
@@ -564,21 +583,13 @@ export default function TradePanel({
                           href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`} 
                           target="_blank" 
                           rel="noopener noreferrer"
-                          className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
+                          className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80]/90 hover:text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.4)] hover:drop-shadow-[0_0_12px_rgba(74,222,128,0.7)] transition-all duration-300"
                           title="View on Solana Explorer"
                         >
-                          <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/80 transition-colors">TEE Trade</span>
-                          <span className="truncate underline decoration-[#16a34a]/40 underline-offset-4">{txSignature}</span>
+                          <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/90 transition-colors">TEE Trade</span>
+                          <span className="truncate underline decoration-[#16a34a]/40 group-hover:decoration-[#4ade80]/60 underline-offset-4 transition-colors">{txSignature}</span>
                           <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                         </a>
-                        <button
-                          type="button"
-                          onClick={copySignature}
-                          className="hover:bg-white/10 p-1.5 rounded transition-colors"
-                          title="Copy Signature"
-                        >
-                          {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -594,27 +605,19 @@ export default function TradePanel({
                       href={`https://solscan.io/tx/${txSignature}?cluster=devnet`} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80] hover:text-[#22c55e] transition-colors"
+                      className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80]/90 hover:text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.4)] hover:drop-shadow-[0_0_12px_rgba(74,222,128,0.7)] transition-all duration-300"
                       title="View on Solscan"
                     >
-                      <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-white/50 group-hover:text-white/70 transition-colors">View Tx</span>
-                      <span className="truncate underline decoration-[#16a34a]/40 underline-offset-4">{txSignature}</span>
+                      <span className="font-sans font-bold uppercase tracking-widest text-[10px] text-[#4ade80]/60 group-hover:text-[#4ade80]/90 transition-colors">View Tx</span>
+                      <span className="truncate underline decoration-[#16a34a]/40 group-hover:decoration-[#4ade80]/60 underline-offset-4 transition-colors">{txSignature}</span>
                       <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                     </a>
-                    <button
-                      type="button"
-                      onClick={copySignature}
-                      className="hover:bg-black/45 p-1 rounded transition-colors"
-                      title="Copy Signature"
-                    >
-                      {copied ? <Check className="h-3.5 w-3.5 text-[#4ade80]" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
-                    </button>
                   </div>
                 </div>
               </div>
             )}
           </div>
-          <div className="absolute bottom-2 left-6 right-6 flex items-center gap-3">
+          <div className="absolute -bottom-4 left-6 right-6 flex items-center gap-3">
             <Link href={`/portfolio?market=${marketAddress}`} className="flex-1">
               <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
                 View Trade
@@ -624,6 +627,8 @@ export default function TradePanel({
               onClick={() => {
                 setSuccess(false);
                 setTxSignature(null);
+                setDepositSignature(null);
+                setDelegateSignature(null);
                 setAmount('');
               }}
               className="flex-1 py-3 bg-transparent text-white border border-white/20 rounded-lg font-semibold hover:bg-white/5 transition-all"
