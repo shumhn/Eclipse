@@ -293,7 +293,7 @@ export function PhantomWalletButton() {
             {/* Explorer Link & Disconnect */}
             <div className="p-4 pt-0 space-y-2">
               <a
-                href={`https://explorer.solana.com/address/${address}?cluster=devnet`}
+                href={`https://solscan.io/account/${address}?cluster=devnet`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 p-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm transition-colors text-eclipse-text-main"

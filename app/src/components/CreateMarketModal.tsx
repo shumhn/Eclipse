@@ -11,7 +11,6 @@ import {
   explorerTxUrl,
   finalizeCreateMarket,
   prepareCreateMarket,
-  fetchDecryptedMarketState,
 } from '@/lib/api';
 import { signAndSend } from '@/lib/magicblock';
 import { getOrFetchTeeAuthToken } from '@/lib/magicblock/client';
@@ -755,12 +754,9 @@ function ProofLink({ label, signature, isTee, onViewReceipt, isLoadingReceipt }:
       <div className="flex items-center gap-2">
         {isTee ? (
           <>
-            <span className="inline-flex items-center gap-1.5 font-medium text-eclipse-green text-xs bg-eclipse-green/10 px-2 py-1 rounded-md border border-eclipse-green/20">
-              <Zap className="h-3 w-3" />
-              TEE Executed
-            </span>
+
             <a
-              href={`https://explorer.solana.com/tx/${signature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet.magicblock.app`}
+              href={`https://explorer.solana.com/tx/${signature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 font-medium text-eclipse-green hover:text-eclipse-green-light transition-colors text-xs bg-eclipse-green/10 px-2 py-1 rounded-md hover:bg-eclipse-green/20"

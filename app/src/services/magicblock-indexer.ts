@@ -921,6 +921,10 @@ export class MagicBlockIndexer {
     let privateStateSnapshot: Record<string, unknown> | null = null;
     try {
       const [privateStatePda] = this.getPrivateMarketStatePda(marketPda);
+      
+      // Add a small delay to ensure the TEE RPC has propagated the state after confirmation
+      await sleep(1500);
+      
       const privateInfo = await authenticatedEphemeralConnection.getAccountInfo(privateStatePda, 'confirmed');
       if (privateInfo) {
         const decoded = this.decodePrivateMarketState(privateInfo.data);
@@ -1126,6 +1130,10 @@ export class MagicBlockIndexer {
     let privateStateSnapshot: Record<string, unknown> | null = null;
     try {
       const [privateStatePda] = this.getPrivateMarketStatePda(marketPubkey);
+      
+      // Add a small delay to ensure the TEE RPC has propagated the state after confirmation
+      await sleep(1500);
+      
       const privateInfo = await authenticatedEphemeralConnection.getAccountInfo(privateStatePda, 'confirmed');
       if (privateInfo) {
         const decoded = this.decodePrivateMarketState(privateInfo.data);
@@ -1141,6 +1149,9 @@ export class MagicBlockIndexer {
           outcome: decoded.outcome,
           bump: decoded.bump,
         };
+        console.log('[finalizeMarketCreation] Captured snapshot successfully:', privateStateSnapshot?.market);
+      } else {
+        console.warn('[finalizeMarketCreation] privateInfo was null after initialization!');
       }
     } catch (e) {
       console.warn('[finalizeMarketCreation] Could not read private state snapshot:', (e as Error).message);

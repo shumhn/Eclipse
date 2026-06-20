@@ -78,7 +78,7 @@ export default function DocsPage() {
 
       <div className="not-prose mt-10 grid gap-4 md:grid-cols-2">
         <a
-          href="https://explorer.solana.com/address/79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t?cluster=devnet"
+          href="https://solscan.io/account/79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t?cluster=devnet"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100"

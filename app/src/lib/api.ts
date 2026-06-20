@@ -145,20 +145,6 @@ export async function trackNewMarket(marketAddress: string): Promise<void> {
   }
 }
 
-export async function fetchDecryptedMarketState(marketAddress: string, teeToken: string) {
-  const res = await fetch(`/api/markets/${marketAddress}/private-state`, {
-    headers: {
-      Authorization: `Bearer ${teeToken}`,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    console.error('Failed to fetch decrypted private state:', text);
-    throw new Error(`Failed to fetch decrypted private state: ${text}`);
-  }
-  const data = await res.json();
-  return data.privateState;
-}
 
 export async function fetchMarket(marketId: string): Promise<Market | null> {
   const res = await fetch(`${API_BASE}/api/markets/${marketId}`);
