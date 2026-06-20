@@ -293,7 +293,7 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
               </div>
               <div className="p-4 space-y-3">
                 {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
-                {commitSignature && <ProofLink label="Finalize position on Solana" signature={commitSignature} />}
+                {commitSignature && <ProofLink label="Undelegate position to Solana" signature={commitSignature} isTee={true} />}
                 {claimSignature && <ProofLink label="Claim winnings to wallet" signature={claimSignature} />}
               </div>
             </div>
