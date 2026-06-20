@@ -17,7 +17,12 @@ export async function GET() {
     const supportedMarkets = coreMarkets.data.filter(
       (market) => market.account.collateral_token === config.collateralMint
     );
-    const mergedMarkets = marketTracker.mergeWithCOREMarkets(supportedMarkets);
+    let mergedMarkets = marketTracker.mergeWithCOREMarkets(supportedMarkets);
+
+    // Filter out test markets from the UI
+    mergedMarkets = mergedMarkets.filter(
+      (market) => !market.question?.toLowerCase().startsWith('test market')
+    );
 
     return NextResponse.json({
       success: true,
