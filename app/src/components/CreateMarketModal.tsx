@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
 import { PublicKey } from '@solana/web3.js';
 import { X, Zap, AlertCircle, CheckCircle, CheckCircle2, CircleDashed, Loader2, Calendar, Clock, ExternalLink, Lock } from 'lucide-react';
@@ -30,6 +31,7 @@ interface CreateMarketModalProps {
 }
 
 export default function CreateMarketModal({ isOpen, onClose, onSuccess }: CreateMarketModalProps) {
+  const router = useRouter();
   const { isConnected } = usePhantom();
   const accounts = useAccounts();
   const [question, setQuestion] = useState('');
@@ -392,8 +394,18 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
               <Button variant="heroSecondary" onClick={resetForm} className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-white border-none">
                 Create Another
               </Button>
-              <Button onClick={handleClose} className="flex-1 bg-eclipse-green hover:bg-eclipse-green-light text-white">
-                View Markets
+              <Button 
+                onClick={() => {
+                  handleClose();
+                  if (success?.marketAddress) {
+                    router.push(`/markets/${success.marketAddress}`);
+                  } else {
+                    router.push('/markets');
+                  }
+                }} 
+                className="flex-1 bg-eclipse-green hover:bg-eclipse-green-light text-white"
+              >
+                View Market
               </Button>
             </div>
           </div>
