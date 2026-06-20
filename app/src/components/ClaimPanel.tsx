@@ -278,24 +278,15 @@ export default function ClaimPanel({ market, onClaimComplete }: ClaimPanelProps)
         )}
 
         {step === 'success' ? (
-          <div className="flex flex-col items-center justify-center py-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-eclipse-green/10 flex items-center justify-center mb-4">
-              <CheckCircle className="w-8 h-8 text-eclipse-green" />
+          <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden mb-4">
+            <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-4 border-b border-white/[0.06]">
+              <h3 className="font-bold text-white tracking-tight">Proof of Execution</h3>
+              <p className="text-xs text-eclipse-text-muted mt-1">Honest devnet evidence for your claim</p>
             </div>
-            <h3 className="text-lg font-bold text-white mb-1 tracking-tight">Claim Successful</h3>
-            <p className="text-sm text-eclipse-text-muted mb-4">
-              Your winnings have been transferred to your wallet.
-            </p>
-            <div className="w-full text-left rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
-              <div className="bg-gradient-to-b from-white/[0.04] to-transparent p-4 border-b border-white/[0.06]">
-                <h3 className="font-bold text-white tracking-tight">Proof of Execution</h3>
-                <p className="text-xs text-eclipse-text-muted mt-1">Honest devnet evidence for your claim</p>
-              </div>
-              <div className="p-4 space-y-3">
-                {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
-                {commitSignature && <ProofLink label="Undelegate position to Solana" signature={commitSignature} isTee={true} />}
-                {claimSignature && <ProofLink label="Claim winnings to wallet" signature={claimSignature} />}
-              </div>
+            <div className="p-4 space-y-3">
+              {settleSignature && <ProofLink label="Settle private position" signature={settleSignature} isTee={true} />}
+              {commitSignature && <ProofLink label="Undelegate position to Solana" signature={commitSignature} isTee={true} />}
+              {claimSignature && <ProofLink label="Claim winnings to wallet" signature={claimSignature} />}
             </div>
           </div>
         ) : step === 'noWinnings' ? (
