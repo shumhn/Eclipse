@@ -37,12 +37,14 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
 
   // Date and time state for resolution
   const [endDate, setEndDate] = useState(() => {
-    // Default to tomorrow
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    return new Date().toISOString().split('T')[0];
   });
-  const [endTime, setEndTime] = useState('12:00');
+  const [endTime, setEndTime] = useState(() => {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  });
 
   const [oracleKind, setOracleKind] = useState<'pythPrice' | 'manual'>('pythPrice');
   const [oracleAsset, setOracleAsset] = useState<PriceFeedSymbol>(DEFAULT_PRICE_FEED_SYMBOL);
@@ -279,10 +281,11 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
   const resetForm = () => {
     setQuestion('');
     setInitialLiquidity('1');
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setEndDate(tomorrow.toISOString().split('T')[0]);
-    setEndTime('12:00');
+    const now = new Date();
+    setEndDate(now.toISOString().split('T')[0]);
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    setEndTime(`${hours}:${minutes}`);
     setOracleKind('pythPrice');
     setOracleAsset(DEFAULT_PRICE_FEED_SYMBOL);
     setPriceDirection('above');
