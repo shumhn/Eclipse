@@ -8,6 +8,7 @@
   },
   "vars": {
     "APP_URL": "https://eclipse-predict.vercel.app",
-    "CRANK_LIMIT": "10"
+    "CRANK_LIMIT": "1",
+    "CRANK_TIMEOUT_MS": "55000"
   }
 }
