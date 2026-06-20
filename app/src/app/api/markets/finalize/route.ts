@@ -102,6 +102,7 @@ export async function POST(req: Request) {
         delegationSignature: result.delegationSignature,
         creatorPositionDelegationSignature: result.creatorPositionDelegationSignature,
         privateStateInitializationSignature: result.privateStateInitializationSignature,
+        privateStateSnapshot: result.privateStateSnapshot,
         creatorPosition: result.creatorPosition,
         sportsMarket,
         tracked: { ...trackedMarket },
