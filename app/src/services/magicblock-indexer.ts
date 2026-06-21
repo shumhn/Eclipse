@@ -389,19 +389,24 @@ export class MagicBlockIndexer {
   async getMarketInfo(marketAddress: string): Promise<NormalizedMarket | null> {
     try {
       const pubkey = new PublicKey(marketAddress);
-      let info = await this.connection.getAccountInfo(pubkey, 'confirmed');
-      if (!info) return null;
-
-      if (info.owner.equals(DELEGATION_PROGRAM_ID)) {
-        try {
-          const ephInfo = await this.ephemeralConnection.getAccountInfo(pubkey, 'confirmed');
-          if (ephInfo) {
-            info = ephInfo;
-          }
-        } catch (e) {
-          // Fallback to L1
+      let info = null;
+      
+      // Try Ephemeral RPC first for instant "processed" state
+      try {
+        const ephInfo = await this.ephemeralConnection.getAccountInfo(pubkey, 'processed');
+        if (ephInfo) {
+          info = ephInfo;
         }
+      } catch (e) {
+        // Ignore error, fallback to L1
       }
+
+      // Fallback to L1 if not delegated or error
+      if (!info) {
+        info = await this.connection.getAccountInfo(pubkey, 'confirmed');
+      }
+
+      if (!info) return null;
 
       const decoded = this.decodeMarketAccount(info.data);
       const normalized = this.normalizeMarket(pubkey, decoded, info.owner);

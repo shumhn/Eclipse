@@ -7,7 +7,7 @@ import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solan
 export { fetchTeeAuthToken, getOrFetchTeeAuthToken } from '@/lib/magicblock';
 
 const API_BASE = '';
-const RPC_URL = 'https://api.devnet.solana.com';
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 
 export interface TradeParams {
   marketAddress: string;

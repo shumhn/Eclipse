@@ -7,7 +7,7 @@ import { getAssociatedTokenAddress, getAccount } from "@solana/spl-token";
 import { ChevronDown, ExternalLink, RefreshCw, Coins, Zap } from "lucide-react";
 import { getBaseBalance, getPrivateBalance, getOrFetchTeeAuthToken } from "@/lib/magicblock";
 
-const RPC_URL = "https://api.devnet.solana.com";
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 interface WalletBalances {
   sol: number;

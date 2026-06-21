@@ -100,7 +100,7 @@ export default function MarketDetailPage() {
 
   useEffect(() => {
     loadMarket();
-    const timer = window.setInterval(loadMarket, 5000);
+    const timer = window.setInterval(loadMarket, 1000);
     return () => window.clearInterval(timer);
   }, [marketId]);
 
