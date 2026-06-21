@@ -14,6 +14,9 @@ const PYTH_LAZER_PROGRAM_ID = new PublicKey(
   "PriCems5tHihc6UDXDjzjeawomAwBduWMGAi8ZUjppd",
 );
 const PYTH_LAZER_PRICE_OFFSET = 73;
+const DEFAULT_CHART_HEIGHT = 300;
+const MIN_CHART_HEIGHT = 220;
+const MAX_CHART_HEIGHT = 320;
 
 interface PriceChartProps {
   asset: PriceFeedAsset | "Unknown";
@@ -87,13 +90,26 @@ function PriceChartInner({
     if (asset === "Unknown" || !chartContainerRef.current) return;
 
     let destroyed = false;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const getChartSize = () => {
+      const rect = chartContainerRef.current?.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect?.width || 0));
+      const measuredHeight = Math.floor(rect?.height || DEFAULT_CHART_HEIGHT);
+      const height = Math.min(
+        MAX_CHART_HEIGHT,
+        Math.max(MIN_CHART_HEIGHT, measuredHeight || DEFAULT_CHART_HEIGHT),
+      );
+      return { width, height };
+    };
 
     import("lightweight-charts").then((lc) => {
       if (destroyed || !chartContainerRef.current) return;
+      const { width, height } = getChartSize();
 
       const chart = lc.createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
+        width,
+        height,
         layout: {
           background: { color: "transparent" },
           textColor: "#7C858E",
@@ -149,23 +165,19 @@ function PriceChartInner({
       chartRef.current = chart;
       areaSeriesRef.current = areaSeries;
 
-      const ro = new ResizeObserver(() => {
+      resizeObserver = new ResizeObserver(() => {
         if (chartContainerRef.current && !destroyed) {
-          chart.applyOptions({
-            width: chartContainerRef.current.clientWidth,
-            height: chartContainerRef.current.clientHeight,
-          });
+          chart.applyOptions(getChartSize());
         }
       });
-      ro.observe(chartContainerRef.current);
+      resizeObserver.observe(chartContainerRef.current);
 
       setReady(true);
-
-      return () => ro.disconnect();
     });
 
     return () => {
       destroyed = true;
+      resizeObserver?.disconnect();
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
@@ -351,8 +363,8 @@ function PriceChartInner({
   if (asset === "Unknown") return null;
 
   return (
-    <div className="w-full h-full relative font-sans flex flex-col">
-      <div className="flex justify-between items-start z-10 px-1 mb-6">
+    <div className="w-full h-full min-h-0 overflow-hidden relative font-sans flex flex-col">
+      <div className="flex shrink-0 justify-between items-start z-10 px-1 mb-6">
         <div className="flex gap-12">
           {/* Price To Beat */}
           <div className="flex flex-col">
@@ -396,8 +408,7 @@ function PriceChartInner({
 
       <div
         ref={chartContainerRef}
-        className="flex-1 w-full"
-        style={{ minHeight: 250 }}
+        className="min-h-0 flex-1 w-full overflow-hidden"
       />
       <div className="pointer-events-none absolute bottom-2 right-2 rounded-full border border-eclipse-border bg-black/40 px-2 py-1 text-[10px] font-medium text-eclipse-text-muted backdrop-blur">
         {updateCount > 0 ? `${updateCount.toLocaleString()} ticks` : "Waiting for ticks"}

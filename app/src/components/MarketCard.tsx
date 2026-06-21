@@ -11,16 +11,15 @@ interface MarketCardProps {
 }
 
 export default function MarketCard({ market, isTracked = false }: MarketCardProps) {
-  const positionsHidden = market.positionsHidden ?? false;
   const isPriceMarket = market.account.oracle_kind === 'pythPrice';
   const isSportsMarket = Boolean(market.sportsMarket);
   
-  const prices = positionsHidden
-    ? { yes: 0.5, no: 0.5 }
-    : calculatePriceFromReserves(
-        market.account.yes_token_supply_minted,
-        market.account.no_token_supply_minted
-      );
+  const prices = calculatePriceFromReserves(
+    market.account.yes_token_supply_minted,
+    market.account.no_token_supply_minted
+  );
+  const yesPercent = Math.round(prices.yes * 100);
+  const noPercent = Math.round(prices.no * 100);
       
   const active = isMarketActive(market);
 
@@ -79,14 +78,13 @@ export default function MarketCard({ market, isTracked = false }: MarketCardProp
               <span className="text-gray-400 italic">Binary Event</span>
             )}
           </div>
-          
           {/* Odds & Buttons */}
           <div className="flex items-center gap-4">
-            {positionsHidden ? (
+            {market.positionsHidden ? (
               <span className="font-bold text-white text-[15px] w-[42px] text-right">TEE</span>
             ) : (
               <span className="font-bold text-white text-[15px] w-[42px] text-right">
-                {(prices.yes * 100).toFixed(0)}%
+                {yesPercent}%
               </span>
             )}
             
