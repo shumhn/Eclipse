@@ -29,6 +29,13 @@ export interface PreparedTransaction {
   topupNonce?: string;
 }
 
+export interface PreparedPrivateFundingTransaction {
+  transaction: string | null;
+  positionAddress: string;
+  alreadyFunded: boolean;
+  sendTo: 'ephemeral' | 'none';
+}
+
 export interface TradeResult {
   signature: string;
   market: string;
@@ -148,6 +155,35 @@ export async function preparePrivateTradeTransaction(
   const json = await res.json();
   if (!json.success) {
     throw new Error(json.error || 'Failed to prepare private trade transaction');
+  }
+
+  return json.data;
+}
+
+export async function preparePrivateFundingTransaction(
+  params: {
+    marketAddress: string;
+    walletAddress: string;
+    topupReceiptAddress?: string;
+  },
+  teeToken?: string
+): Promise<PreparedPrivateFundingTransaction> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (teeToken) headers.Authorization = `Bearer ${teeToken}`;
+
+  const res = await fetch(`${API_BASE}/api/trading/prepare-funds`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      market: params.marketAddress,
+      walletAddress: params.walletAddress,
+      topupReceiptAddress: params.topupReceiptAddress,
+    }),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to prepare private funding transaction');
   }
 
   return json.data;

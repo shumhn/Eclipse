@@ -354,12 +354,22 @@ export class MagicBlockIndexer {
         if (!account) return null;
         const pubkey = marketPubkeys[index];
         if (!account.data.subarray(0, 8).equals(this.marketDiscriminator)) return null;
+        
+        let latestAccount = account;
+        if (account.owner.equals(DELEGATION_PROGRAM_ID)) {
+          try {
+            const ephAccount = await this.ephemeralConnection.getAccountInfo(pubkey, 'confirmed');
+            if (ephAccount) {
+              latestAccount = ephAccount;
+            }
+          } catch (e) {
+            // Silently fall back to L1 state
+          }
+        }
+
         try {
-          const decoded = this.decodeMarketAccount(account.data);
-          const privateState = fetchPrivateState
-            ? await this.fetchPrivateMarketState(pubkey, account.owner)
-            : null;
-          const normalized = this.normalizeMarket(pubkey, decoded, account.owner, privateState);
+          const decoded = this.decodeMarketAccount(latestAccount.data);
+          const normalized = this.normalizeMarket(pubkey, decoded, latestAccount.owner);
           return attachPriceData ? await this.attachPriceMarketData(normalized) : normalized;
         } catch (error) {
           console.warn(
@@ -379,12 +389,22 @@ export class MagicBlockIndexer {
   async getMarketInfo(marketAddress: string): Promise<NormalizedMarket | null> {
     try {
       const pubkey = new PublicKey(marketAddress);
-      const info = await this.connection.getAccountInfo(pubkey, 'confirmed');
+      let info = await this.connection.getAccountInfo(pubkey, 'confirmed');
       if (!info) return null;
 
+      if (info.owner.equals(DELEGATION_PROGRAM_ID)) {
+        try {
+          const ephInfo = await this.ephemeralConnection.getAccountInfo(pubkey, 'confirmed');
+          if (ephInfo) {
+            info = ephInfo;
+          }
+        } catch (e) {
+          // Fallback to L1
+        }
+      }
+
       const decoded = this.decodeMarketAccount(info.data);
-      const privateState = await this.fetchPrivateMarketState(pubkey, info.owner);
-      const normalized = this.normalizeMarket(pubkey, decoded, info.owner, privateState);
+      const normalized = this.normalizeMarket(pubkey, decoded, info.owner);
       return await this.attachPriceMarketData(normalized);
     } catch (error) {
       console.error(`[MagicBlockIndexer] Error fetching market ${marketAddress}:`, error);
@@ -711,6 +731,97 @@ export class MagicBlockIndexer {
     return {
       transaction: tx,
       positionAddress: positionPda.toBase58(),
+    };
+  }
+
+  async preparePrivateFundingTransaction(params: {
+    market: string;
+    walletAddress: string;
+    teeToken?: string;
+    topupReceiptAddress?: string;
+  }): Promise<{
+    transaction: Transaction | null;
+    positionAddress: string;
+    alreadyFunded: boolean;
+  }> {
+    const marketPubkey = new PublicKey(params.market);
+    const traderPubkey = new PublicKey(params.walletAddress);
+    const [configPda] = this.getConfigPda();
+    const [positionPda] = this.getPositionPda(marketPubkey, traderPubkey);
+    const [privatePositionPda] = this.getPrivatePositionStatePda(marketPubkey, traderPubkey);
+
+    const market = await this.getMarketInfo(params.market);
+    if (!market) throw new Error('Market not found');
+    if (!market.delegated) throw new Error('Market is not delegated into MagicBlock TEE');
+    this.assertMarketTradeable(market);
+
+    const positionInfo = await this.connection.getAccountInfo(positionPda, 'confirmed');
+    if (!positionInfo) throw new Error('Private position not found. Fund the position first.');
+    if (!positionInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+      throw new Error('Private position is not delegated into TEE yet');
+    }
+
+    const teeConnection = params.teeToken
+      ? new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(params.teeToken)}`, 'confirmed')
+      : this.ephemeralConnection;
+
+    const privatePositionInfo = await teeConnection.getAccountInfo(
+      privatePositionPda,
+      'confirmed'
+    );
+
+    const instructionProgram = this.createInstructionProgram(teeConnection);
+    const tx = new Transaction();
+
+    if (!privatePositionInfo) {
+      const initIx = await instructionProgram.methods
+        .initializePrivatePositionState()
+        .accountsPartial({
+          trader: traderPubkey,
+          config: configPda,
+          market: marketPubkey,
+          position: positionPda,
+          privatePosition: privatePositionPda,
+          magicProgram: MAGIC_PROGRAM_ID,
+          magicContext: MAGIC_CONTEXT_ID,
+        })
+        .instruction();
+      tx.add(initIx);
+    }
+
+    if (params.topupReceiptAddress) {
+      const consumeTopupIx = await instructionProgram.methods
+        .consumePositionTopupReceiptEr()
+        .accountsPartial({
+          trader: traderPubkey,
+          config: configPda,
+          market: marketPubkey,
+          position: positionPda,
+          privatePosition: privatePositionPda,
+          receipt: new PublicKey(params.topupReceiptAddress),
+          magicProgram: MAGIC_PROGRAM_ID,
+          magicContext: MAGIC_CONTEXT_ID,
+        })
+        .instruction();
+      tx.add(consumeTopupIx);
+    }
+
+    if (tx.instructions.length === 0) {
+      return {
+        transaction: null,
+        positionAddress: positionPda.toBase58(),
+        alreadyFunded: true,
+      };
+    }
+
+    const { blockhash } = await teeConnection.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = traderPubkey;
+
+    return {
+      transaction: tx,
+      positionAddress: positionPda.toBase58(),
+      alreadyFunded: false,
     };
   }
 
@@ -2139,8 +2250,7 @@ export class MagicBlockIndexer {
   private normalizeMarket(
     publicKey: PublicKey,
     account: LayoutDecoded,
-    owner: PublicKey,
-    privateState: LayoutDecoded | null
+    owner: PublicKey
   ): NormalizedMarket {
     const status = asNumber(account.status);
     const outcome = asNumber(account.outcome);
@@ -2153,13 +2263,13 @@ export class MagicBlockIndexer {
     const positionsHidden = delegated && !resolved;
 
     const fallbackPool = Math.max(asNumber(account.total_deposited), 1_000_000);
-    const reserves = privateState ? asNumber(privateState.reserves) : asNumber(account.final_reserves) || fallbackPool;
-    const yesSupply = privateState ? asNumber(privateState.yes_supply) : Math.max(Math.floor(fallbackPool / 2), 1);
-    const noSupply = privateState ? asNumber(privateState.no_supply) : Math.max(Math.floor(fallbackPool / 2), 1);
+    const reserves = asNumber(account.live_reserves) || fallbackPool;
+    const yesSupply = asNumber(account.live_yes_supply) || Math.max(Math.floor(fallbackPool / 2), 1);
+    const noSupply = asNumber(account.live_no_supply) || Math.max(Math.floor(fallbackPool / 2), 1);
 
-    const visibleYesSupply = positionsHidden ? '0' : yesSupply.toString(16);
-    const visibleNoSupply = positionsHidden ? '0' : noSupply.toString(16);
-    const visibleReserves = positionsHidden ? '0' : reserves.toString(16);
+    const visibleYesSupply = yesSupply.toString(16);
+    const visibleNoSupply = noSupply.toString(16);
+    const visibleReserves = reserves.toString(16);
 
     const outcomeStr = outcome === 1 ? 'yes' : outcome === 2 ? 'no' : outcome === 3 ? 'invalid' : 'undetermined';
 
@@ -2172,7 +2282,7 @@ export class MagicBlockIndexer {
       settlementState: delegated ? 'delegated' : 'base',
       tradingEnabled: delegated && !resolved && endTimeNum > nowSec,
       privacyNote: delegated
-        ? 'This market is delegated into MagicBlock. Live positions and pricing stay inside PER until resolution.'
+        ? 'This market is delegated into MagicBlock. Individual positions stay private while aggregate odds are visible for price discovery.'
         : 'This shell is visible on Solana, but private live-state trading only works after MagicBlock delegation.',
       priceMarket: undefined,
       account: {

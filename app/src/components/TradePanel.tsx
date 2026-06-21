@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
 import { Settings, CheckCircle, Shield, Copy, Check, Eye, EyeOff, ArrowRight, ExternalLink } from 'lucide-react';
-import { MarketPrices, Position } from '@/lib/api';
+import { MarketPrices, MarketQuoteState, Position, quoteTradeFromAmm } from '@/lib/api';
 import {
   getOrFetchTeeAuthToken,
   delegatePrivatePosition,
   delegateTopupReceipt,
+  preparePrivateFundingTransaction,
   preparePositionTransaction,
   preparePrivateTradeTransaction,
   prepareTradeTransaction,
@@ -19,6 +20,7 @@ import { PublicKey } from '@solana/web3.js';
 interface TradePanelProps {
   marketAddress: string;
   prices: MarketPrices;
+  quoteState?: MarketQuoteState;
   onTradeComplete?: () => void;
   tradingEnabled?: boolean;
   disabledReason?: string;
@@ -30,6 +32,7 @@ interface TradePanelProps {
 export default function TradePanel({
   marketAddress,
   prices,
+  quoteState,
   onTradeComplete,
   tradingEnabled = true,
   disabledReason,
@@ -40,11 +43,15 @@ export default function TradePanel({
   const { isConnected } = usePhantom();
   const accounts = useAccounts();
 
-  const [tradeType, setTradeType] = useState<'buy' | 'sell'>('buy');
+  const [tradeType, setTradeType] = useState<'buy' | 'sell' | 'deposit'>('buy');
   const [side, setSide] = useState<'yes' | 'no'>('yes');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fundAmount, setFundAmount] = useState('');
+  const [funding, setFunding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fundingError, setFundingError] = useState<string | null>(null);
+  const [fundingSuccess, setFundingSuccess] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [depositSignature, setDepositSignature] = useState<string | null>(null);
@@ -97,7 +104,7 @@ export default function TradePanel({
     }
 
     if (message.includes('Insufficient delegated collateral available for private trade')) {
-      return 'This private position needs more USDC moved into MagicBlock TEE before this trade can execute. Try again so the app can top up and trade in one private flow.';
+      return 'Add funds to this market first, then trade from your market TEE balance. Wallet-level Shielded USDC is separate from market position collateral.';
     }
 
     return message;
@@ -123,6 +130,85 @@ export default function TradePanel({
     message.includes('Private position not found') ||
     message.includes('Private position is not delegated into TEE yet') ||
     message.includes('No position found');
+
+  const handleAddPrivateFunds = async () => {
+    if (!fundAmount || parseFloat(fundAmount) <= 0) {
+      setFundingError('Enter a valid USDC amount to add.');
+      return;
+    }
+
+    const phantom = (window as any).phantom?.solana;
+    if (!walletAddress || !phantom) {
+      setFundingError('Wallet not connected');
+      return;
+    }
+
+    setFunding(true);
+    setFundingError(null);
+    setFundingSuccess(null);
+    setDepositSignature(null);
+    setDelegateSignature(null);
+
+    try {
+      const fundUsdc = parseFloat(fundAmount);
+      const teeToken = await getTeeToken();
+      const setup = await preparePositionTransaction({
+        marketAddress,
+        amountUsdc: fundUsdc,
+        walletAddress,
+      });
+
+      const depositSig = await signAndSend(
+        setup.transaction,
+        (tx) => phantom.signTransaction(tx),
+        { sendTo: 'base' }
+      );
+      setDepositSignature(depositSig);
+
+      let topupReceiptAddress: string | undefined;
+      if (setup.topupReceiptAddress && setup.topupNonce) {
+        const { signature: delSig } = await delegateTopupReceipt({
+          marketAddress,
+          walletAddress,
+          nonce: setup.topupNonce,
+        });
+        if (delSig) setDelegateSignature(delSig);
+        topupReceiptAddress = setup.topupReceiptAddress;
+      } else {
+        const { signature: delSig } = await delegatePrivatePosition({
+          marketAddress,
+          walletAddress,
+        });
+        if (delSig) setDelegateSignature(delSig);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      const preparedFunding = await preparePrivateFundingTransaction({
+        marketAddress,
+        walletAddress,
+        topupReceiptAddress,
+      }, teeToken);
+
+      if (preparedFunding.transaction) {
+        const signature = await signAndSend(
+          preparedFunding.transaction,
+          (tx) => phantom.signTransaction(tx),
+          { sendTo: 'ephemeral', ephemeralToken: teeToken }
+        );
+        setTxSignature(signature);
+      }
+
+      setFundingSuccess(`${fundUsdc.toFixed(2)} USDC is now available inside your private TEE balance.`);
+      setFundAmount('');
+      onTradeComplete?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add private funds';
+      setFundingError(formatTradeError(message));
+    } finally {
+      setFunding(false);
+    }
+  };
 
   useEffect(() => {
     if (!success || !txSignature || !positionsHidden) {
@@ -218,7 +304,6 @@ export default function TradePanel({
             if (delSig) setDelegateSignature(delSig);
             topupReceiptAddress = setup.topupReceiptAddress;
             topupNonce = setup.topupNonce;
-            // Give PER time to see the newly delegated receipt
             await new Promise((r) => setTimeout(r, 2000));
             return;
           }
@@ -228,17 +313,10 @@ export default function TradePanel({
             walletAddress,
           });
           if (delSig) setDelegateSignature(delSig);
-          // Give PER time to see the newly delegated position
           await new Promise((r) => setTimeout(r, 2000));
         };
 
-        // For repeat trades: position is already delegated but balance is
-        // insufficient → topup path. Also covers edge case where balance
-        // data is stale (always topup if we have an existing delegated
-        // position and don't have enough).
-        const needsTopup =
-          existingPosition?.delegated && privateBalanceLamports < amountLamports;
-
+        const needsTopup = !existingPosition?.delegated || privateBalanceLamports < amountLamports;
         if (needsTopup) {
           await setupAndDelegate();
         }
@@ -256,7 +334,6 @@ export default function TradePanel({
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
 
-            // If the private position isn't set up yet, do the full setup
             if (needsPrivatePositionSetup(msg)) {
               await setupAndDelegate();
               return preparePrivateTradeTransaction({
@@ -269,8 +346,6 @@ export default function TradePanel({
               }, teeToken);
             }
 
-            // If it's a collateral/receipt error and we have retries, wait and retry
-            // (PER may not have seen the delegated receipt yet)
             if (retries > 0 && (
               msg.includes('Insufficient') ||
               msg.includes('receipt') ||
@@ -319,8 +394,19 @@ export default function TradePanel({
   };
 
   const currentPrice = side === 'yes' ? prices.yes : prices.no;
-  const estimatedShares = amount ? (parseFloat(amount) / currentPrice).toFixed(2) : '0.00';
-  const potentialReturn = amount ? (parseFloat(amount) / currentPrice).toFixed(2) : '0.00';
+  
+  const amountUsdc = amount ? parseFloat(amount) : 0;
+  const quote = quoteState
+    ? quoteTradeFromAmm(quoteState, side, amountUsdc)
+    : {
+        shares: currentPrice > 0 ? amountUsdc / currentPrice : 0,
+        payoutIfWins: currentPrice > 0 ? amountUsdc / currentPrice : 0,
+      };
+  const quotedShares = quote.shares;
+  const quotedPayout = quote.payoutIfWins;
+  const estimatedShares = quotedShares.toFixed(2);
+  const potentialReturn = quotedPayout.toFixed(2);
+  const returnPct = amountUsdc > 0 ? ((quotedPayout / amountUsdc - 1) * 100).toFixed(2) : '0.00';
 
   if (!tradingEnabled) {
     return (
@@ -341,7 +427,7 @@ export default function TradePanel({
       <div className="flex items-center justify-between px-5 pt-4 pb-0">
         <div className="flex gap-6">
           <button
-            className="pb-3 font-bold text-sm tracking-wide transition-all relative text-white"
+            className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'buy' ? 'text-white' : 'text-white/60 hover:text-white'}`}
             onClick={() => setTradeType('buy')}
           >
             Buy
@@ -349,6 +435,17 @@ export default function TradePanel({
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
             )}
           </button>
+          {positionsHidden && (
+            <button
+              className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'deposit' ? 'text-[#4ade80]' : 'text-[#4ade80]/80 hover:text-[#4ade80]'}`}
+              onClick={() => setTradeType('deposit')}
+            >
+              Deposit
+              {tradeType === 'deposit' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
+              )}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 pb-3 justify-end w-full">
           {isConnected && (
@@ -367,130 +464,231 @@ export default function TradePanel({
       <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
 
       <div className="px-5 pt-4 pb-4">
-        {/* Outcome Selector */}
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={() => setSide('yes')}
-            className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
-              side === 'yes'
-                ? 'bg-[#16a34a]/20 text-[#4ade80] ring-1 ring-[#16a34a]/40'
-                : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
-            }`}
-          >
-            <span>Yes</span>
-            <span className="font-bold tabular-nums">{(prices.yes * 100).toFixed(1)}¢</span>
-          </button>
-          <button
-            onClick={() => setSide('no')}
-            className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
-              side === 'no'
-                ? 'bg-[#ef4444]/20 text-[#f87171] ring-1 ring-[#ef4444]/40'
-                : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
-            }`}
-          >
-            <span>No</span>
-            <span className="font-bold tabular-nums">{(prices.no * 100).toFixed(1)}¢</span>
-          </button>
-        </div>
+        {tradeType === 'buy' && (
+          <>
+            {/* Outcome Selector */}
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => setSide('yes')}
+                className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
+                  side === 'yes'
+                    ? 'bg-[#16a34a]/20 text-[#4ade80] ring-1 ring-[#16a34a]/40'
+                    : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
+                }`}
+              >
+                <span>Yes</span>
+                <span className="font-bold tabular-nums">{(prices.yes * 100).toFixed(1)}¢</span>
+              </button>
+              <button
+                onClick={() => setSide('no')}
+                className={`flex-1 py-2.5 px-5 rounded-lg flex justify-between items-center transition-all duration-200 font-semibold text-[13px] tracking-wide ${
+                  side === 'no'
+                    ? 'bg-[#ef4444]/20 text-[#f87171] ring-1 ring-[#ef4444]/40'
+                    : 'bg-white/[0.03] text-white ring-1 ring-white/[0.06] hover:ring-white/[0.12] hover:text-white'
+                }`}
+              >
+                <span>No</span>
+                <span className="font-bold tabular-nums">{(prices.no * 100).toFixed(1)}¢</span>
+              </button>
+            </div>
 
-        {/* Amount Input */}
-        <div className="mb-4 relative group">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-white font-medium text-xs tracking-widest uppercase">Amount</span>
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] text-white font-semibold tracking-widest uppercase">USDC</span>
-            </div>
-          </div>
-          <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
-            <div className="flex items-center h-12 px-4">
-              <span className="text-white/60 font-bold text-2xl mr-1">$</span>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0"
-                className="w-full bg-transparent text-white font-bold text-2xl outline-none placeholder:text-white/10 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-            </div>
-            {/* Quick Amounts */}
-            <div className="flex justify-center gap-2 px-4 pb-3">
-              {[1, 5, 10, 100].map((val) => (
-                <button
-                  key={val}
-                  onClick={() => setAmount(val.toString())}
-                  className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150"
-                >
-                  +${val}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* TEE Note */}
-        {positionsHidden && (
-          <div className="flex items-start gap-3 mb-4 p-3 bg-[#16a34a]/[0.06] ring-1 ring-[#16a34a]/20 rounded-lg">
-             <Shield className="w-4 h-4 text-[#22c55e] shrink-0 mt-0.5" />
-             <div>
-               <div className="font-semibold text-[13px] text-[#4ade80]">Shielded inside TEE</div>
-               <div className="text-white text-xs leading-relaxed mt-0.5">Your position is hidden until market closes.</div>
+            {/* Amount Input */}
+            <div className="mb-4 relative group">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-white font-medium text-xs tracking-widest uppercase">Amount</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-white font-semibold tracking-widest uppercase">USDC</span>
+                </div>
               </div>
+              <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
+                <div className="flex items-center h-12 px-4">
+                  <span className="text-white/60 font-bold text-2xl mr-1">$</span>
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0"
+                    className="w-full bg-transparent text-white font-bold text-2xl outline-none placeholder:text-white/10 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </div>
+                {/* Quick Amounts */}
+                <div className="flex justify-center gap-2 px-4 pb-3">
+                  {[1, 5, 10, 100].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setAmount(val.toString())}
+                      className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150"
+                    >
+                      +${val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* TEE Note */}
+            {positionsHidden && (
+              <div className="flex items-start gap-3 mb-4 p-3 bg-[#16a34a]/[0.06] ring-1 ring-[#16a34a]/20 rounded-lg">
+                 <Shield className="w-4 h-4 text-[#22c55e] shrink-0 mt-0.5" />
+                 <div>
+                   <div className="font-semibold text-[13px] text-[#4ade80]">Shielded inside TEE</div>
+                   <div className="text-white text-xs leading-relaxed mt-0.5">
+                     Your position is hidden until market closes. Market private balance: ${formatUsdcUnits(privateBalanceLamports)}
+                   </div>
+                  </div>
+              </div>
+            )}
+
+            {/* Estimate Details */}
+            <div className="space-y-2.5 mb-4">
+              <div className="flex justify-between text-[13px]">
+                <span className="text-white">Avg price</span>
+                <span className="text-white font-medium tabular-nums">{(currentPrice * 100).toFixed(1)}¢</span>
+              </div>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between text-[13px]">
+                <span className="text-white/80">Estimated shares</span>
+                <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
+              </div>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between text-[13px]">
+                <span className="text-white/80">Projected payout if right</span>
+                <span className="text-[#4ade80] font-semibold tabular-nums">${potentialReturn} ({returnPct}%)</span>
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-6 text-xs text-[#f87171] p-3 bg-[#ef4444]/10 ring-1 ring-[#ef4444]/20 rounded-lg font-medium">
+                {error}
+              </div>
+            )}
+
+            <button
+              onClick={handleTrade}
+              disabled={loading || !amountUsdc || !isConnected}
+              className="w-full bg-white text-black font-bold py-3.5 rounded-lg transition-all hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 relative overflow-hidden flex items-center justify-center group"
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <span>Processing...</span>
+                </div>
+              ) : !isConnected ? (
+                'Connect Wallet to Trade'
+              ) : (
+                'Trade'
+              )}
+            </button>
+          </>
+        )}
+
+        {tradeType === 'deposit' && positionsHidden && (
+          <div className="mb-4 rounded-lg border border-white/[0.08] bg-white/[0.025] p-5">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <div className="text-[14px] font-bold text-white flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-[#4ade80]" />
+                  Add Private Funds
+                </div>
+                <div className="text-[12px] text-white/50 mt-1">
+                  Deposit USDC from your MagicBlock balance into this specific market. Once deposited, your trading position will be fully private.
+                </div>
+                <div className="text-[12px] text-white mt-3 font-semibold">
+                  Market Private Balance: <span className="text-[#4ade80]">${formatUsdcUnits(privateBalanceLamports)}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mb-2">
+              <span className="text-white font-medium text-xs tracking-widest uppercase block mb-2">Amount</span>
+              <div className="flex gap-2">
+                <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/30 px-3 py-3">
+                  <div className="flex items-center">
+                    <span className="mr-1 text-white/40 font-bold text-lg">$</span>
+                    <input
+                      type="number"
+                      value={fundAmount}
+                      onChange={(event) => setFundAmount(event.target.value)}
+                      placeholder="0"
+                      className="w-full bg-transparent text-lg font-semibold text-white outline-none placeholder:text-white/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleAddPrivateFunds}
+              disabled={funding || !fundAmount || !isConnected}
+              className="mt-3 w-full rounded-lg bg-[#16a34a] px-4 py-3 text-sm font-bold text-black transition-all hover:bg-[#22c55e] disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {funding ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <span>Adding...</span>
+                </>
+              ) : (
+                'Add Funds'
+              )}
+            </button>
+            {fundingSuccess && (
+              <div className="mt-3 rounded-lg border border-[#16a34a]/20 bg-[#16a34a]/10 p-3 text-[12px] font-medium text-[#4ade80]">
+                <div className="mb-2">{fundingSuccess}</div>
+                <div className="flex flex-col gap-1 mt-3 pt-2 border-t border-[#16a34a]/20">
+                  {depositSignature && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/60">Deposit (L1):</span>
+                      <a 
+                        href={`https://explorer.solana.com/tx/${depositSignature}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[#4ade80] hover:underline flex items-center gap-1"
+                      >
+                        {depositSignature.slice(0, 4)}...{depositSignature.slice(-4)}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                  {delegateSignature && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/60">Delegate (L1):</span>
+                      <a 
+                        href={`https://explorer.solana.com/tx/${delegateSignature}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[#4ade80] hover:underline flex items-center gap-1"
+                      >
+                        {delegateSignature.slice(0, 4)}...{delegateSignature.slice(-4)}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                  {txSignature && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/60">Topup (TEE):</span>
+                      <span className="text-[#4ade80] flex items-center gap-1">
+                        {txSignature.slice(0, 4)}...{txSignature.slice(-4)}
+                        <Check className="w-3 h-3" />
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {fundingError && (
+              <div className="mt-3 rounded-lg border border-[#ef4444]/20 bg-[#ef4444]/10 p-3 text-[12px] font-medium text-[#f87171]">
+                {fundingError}
+              </div>
+            )}
           </div>
         )}
 
-
-        {/* Estimate Details */}
-        <div className="space-y-2.5 mb-4">
-          <div className="flex justify-between text-[13px]">
-            <span className="text-white">Avg price</span>
-            <span className="text-white font-medium tabular-nums">{(currentPrice * 100).toFixed(1)}¢</span>
-          </div>
-          <div className="h-px bg-white/[0.04]" />
-          <div className="flex justify-between text-[13px]">
-            <span className="text-white/80">Estimated shares</span>
-            <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
-          </div>
-          <div className="h-px bg-white/[0.04]" />
-          <div className="flex justify-between text-[13px]">
-            <span className="text-white/80">Potential return</span>
-            <span className="text-[#4ade80] font-semibold tabular-nums">${potentialReturn} ({amount ? ((parseFloat(potentialReturn) / parseFloat(amount) - 1) * 100).toFixed(2) : '0.00'}%)</span>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-6 text-xs text-[#f87171] p-3 bg-[#ef4444]/10 ring-1 ring-[#ef4444]/20 rounded-lg font-medium">
-            {error}
-          </div>
-        )}
-
-        {/* Trade Action */}
-        {!isConnected ? (
-          <button className="w-full py-4 bg-white text-black font-bold rounded-lg transition-all duration-200 text-sm tracking-wide hover:shadow-[0_0_30px_rgba(255,255,255,0.12)] active:scale-[0.98]">
-             Connect Wallet
-          </button>
-        ) : (
-          <button
-            onClick={handleTrade}
-            disabled={loading || !amount}
-            className="w-full py-4 font-bold rounded-lg transition-all duration-200 text-sm tracking-wide bg-white text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.12)] active:scale-[0.98]"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Processing...
-              </span>
-            ) : 'Trade'}
-          </button>
-        )}
       </div>
       
       {/* Success Modal/View */}
       {success && txSignature && (
-        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col px-6 pb-6 pt-2 rounded-xl">
-          <div className="flex flex-col items-center justify-center pt-0 pb-6 px-4 text-center">
+        <div className="absolute inset-0 bg-black/95 backdrop-blur-sm z-10 flex flex-col overflow-y-auto px-6 pb-6 pt-2 rounded-xl">
+          <div className="flex flex-col items-center pt-0 px-4 text-center">
             <div className="w-16 h-16 rounded-full bg-[#16a34a]/20 flex items-center justify-center mb-4">
               <CheckCircle className="w-8 h-8 text-[#4ade80]" />
             </div>
@@ -617,7 +815,7 @@ export default function TradePanel({
               </div>
             )}
           </div>
-          <div className="absolute -bottom-4 left-6 right-6 flex items-center gap-3">
+          <div className="mt-1 flex w-full items-center gap-3 px-4">
             <Link href={`/portfolio?market=${marketAddress}`} className="flex-1">
               <button className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all">
                 View Trade

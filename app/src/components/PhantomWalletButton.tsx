@@ -239,7 +239,7 @@ export function PhantomWalletButton() {
             <div className="p-4 border-b border-eclipse-border bg-eclipse-green/5">
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="w-4 h-4 text-eclipse-green" />
-                <span className="text-sm font-bold text-eclipse-text-main">Shielded USDC</span>
+                <span className="text-sm font-bold text-eclipse-text-main">Wallet Shielded USDC</span>
               </div>
               {balances.shieldedUsdc !== null ? (
                 <div className="space-y-2">
@@ -252,7 +252,7 @@ export function PhantomWalletButton() {
                     </span>
                   </div>
                   <p className="text-xs text-eclipse-text-muted">
-                    Trade privately with 0 latency on Ephemeral Rollups.
+                    Wallet-level TEE balance. Each market also needs its own private position balance before trading.
                   </p>
                 </div>
               ) : (
