@@ -10,6 +10,7 @@ const API_BASE = '';
 // Token mint addresses (Devnet)
 // USDC Devnet - collateral for all markets
 export const USDC_MINT = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU';
+export const MIN_SUPPORTED_MARKET_ID = 86;
 
 export interface MarketProof {
   createdAt?: number;
@@ -74,6 +75,17 @@ export interface MarketPrices {
   no: number;
 }
 
+export interface MarketQuoteState {
+  reserves: string;
+  yesSupply: string;
+  noSupply: string;
+}
+
+export interface AmmTradeQuote {
+  shares: number;
+  payoutIfWins: number;
+}
+
 export interface Position {
   publicKey: string;
   delegated: boolean;
@@ -133,7 +145,7 @@ export async function fetchMarkets(): Promise<Market[]> {
     res,
     'Failed to fetch markets'
   );
-  return json.data?.data || [];
+  return (json.data?.data || []).filter(isPostAmmFixMarket);
 }
 
 export async function trackNewMarket(marketAddress: string): Promise<void> {
@@ -395,8 +407,36 @@ export function calculatePriceFromReserves(
   const no = parseInt(noSupply, 16) || 1;
   const total = yes + no;
   return {
-    yes: Math.round((no / total) * 100) / 100,
-    no: Math.round((yes / total) * 100) / 100,
+    yes: yes / total,
+    no: no / total,
+  };
+}
+
+export function quoteTradeFromAmm(
+  quoteState: MarketQuoteState,
+  side: 'yes' | 'no',
+  amountUsdc: number
+): AmmTradeQuote {
+  const amount = Math.round(amountUsdc * 1_000_000);
+  if (!Number.isFinite(amount) || amount <= 0) return { shares: 0, payoutIfWins: 0 };
+
+  const reserves = parseInt(quoteState.reserves, 16) || 0;
+  const yesSupply = parseInt(quoteState.yesSupply, 16) || 0;
+  const noSupply = parseInt(quoteState.noSupply, 16) || 0;
+  if (reserves <= 0 || yesSupply <= 0 || noSupply <= 0) return { shares: 0, payoutIfWins: 0 };
+
+  const target = side === 'yes' ? yesSupply : noSupply;
+  const other = side === 'yes' ? noSupply : yesSupply;
+  const newReserves = reserves + amount;
+  const newTargetSquared = (newReserves * newReserves) - (other * other);
+  if (newTargetSquared <= 0) return { shares: 0, payoutIfWins: 0 };
+
+  const newTarget = Math.sqrt(newTargetSquared);
+  const shares = Math.max(0, newTarget - target);
+  const payoutIfWins = newTarget > 0 ? (shares / newTarget) * newReserves : 0;
+  return {
+    shares: shares / 1_000_000,
+    payoutIfWins: payoutIfWins / 1_000_000,
   };
 }
 
@@ -408,6 +448,11 @@ export function formatTimestamp(hexTimestamp: string): Date {
 export function isMarketActive(market: Market): boolean {
   const endTime = formatTimestamp(market.account.end_time);
   return !market.account.resolved && endTime > new Date();
+}
+
+export function isPostAmmFixMarket(market: Market): boolean {
+  const id = Number(market.account.id);
+  return Number.isFinite(id) && id >= MIN_SUPPORTED_MARKET_ID;
 }
 
 export function getMarketTimeRemaining(market: Market): string {

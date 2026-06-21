@@ -192,7 +192,7 @@ function PortfolioContent() {
                 <StatCard label="No Shares Owned" value={formatShares(totals.no.toString())} />
               </div>
               <p className="mb-6 text-xs text-eclipse-text-muted/70">
-                Note: Shares are bought at a discount (less than $1). You can own more shares than the total USDC you deposited. 1 winning share pays exactly $1.00 USDC.
+                Note: Shares are virtual AMM claims. After resolution, payout is unspent USDC plus your proportional share of final market reserves for the winning side.
               </p>
 
               {hasParkedFunds && (

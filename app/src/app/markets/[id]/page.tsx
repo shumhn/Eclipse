@@ -28,6 +28,7 @@ import {
   fetchPosition,
   Market,
   MarketPrices,
+  MarketQuoteState,
   Position,
   formatUsdPrice,
   explorerTxUrl,
@@ -110,13 +111,18 @@ export default function MarketDetailPage() {
   const positionsHidden = market?.positionsHidden ?? false;
   const isPriceMarket = market?.account.oracle_kind === "pythPrice";
   const prices: MarketPrices = market
-    ? positionsHidden
-      ? { yes: 0.5, no: 0.5 }
-      : calculatePriceFromReserves(
-          market.account.yes_token_supply_minted,
-          market.account.no_token_supply_minted,
-        )
+    ? calculatePriceFromReserves(
+        market.account.yes_token_supply_minted,
+        market.account.no_token_supply_minted,
+      )
     : { yes: 0.5, no: 0.5 };
+  const quoteState: MarketQuoteState | undefined = market
+    ? {
+        reserves: market.account.market_reserves,
+        yesSupply: market.account.yes_token_supply_minted,
+        noSupply: market.account.no_token_supply_minted,
+      }
+    : undefined;
 
   const active = market ? isMarketActive(market) : false;
   const timeRemaining = market ? getMarketTimeRemaining(market) : "";
@@ -142,11 +148,11 @@ export default function MarketDetailPage() {
     ? parseInt(market.account.initial_liquidity, 16) / 1_000_000
     : 0;
   const yesMinted =
-    market && !positionsHidden
+    market
       ? parseInt(market.account.yes_token_supply_minted, 16) / 1_000_000
       : 0;
   const noMinted =
-    market && !positionsHidden
+    market
       ? parseInt(market.account.no_token_supply_minted, 16) / 1_000_000
       : 0;
   const totalVol = baseLiquidity + yesMinted + noMinted;
@@ -227,9 +233,9 @@ export default function MarketDetailPage() {
 
           {/* Market Content */}
           {!loading && market && (
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
+            <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
               {/* Left Column - Market Info */}
-              <div className="space-y-6">
+              <div className="min-w-0 space-y-6">
                 {/* Header Info */}
                 {/* Polymarket-style Header Info */}
                 <div className="flex justify-between items-start mb-8">
@@ -303,7 +309,7 @@ export default function MarketDetailPage() {
                 </div>
 
                 {/* Price Chart / Visual Placeholder */}
-                <div className="h-[420px] flex flex-col mb-8 relative">
+                <div className="relative mb-8 flex h-[420px] min-w-0 flex-col overflow-hidden">
                   {market.account.oracle_kind === "pythPrice" &&
                   market.priceMarket ? (
                     <PriceChart
@@ -344,12 +350,12 @@ export default function MarketDetailPage() {
                             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-eclipse-green/5 via-eclipse-bg/0 to-eclipse-bg/0 pointer-events-none"></div>
                             <Shield className="w-16 h-16 text-eclipse-green/20 mb-4" />
                             <h3 className="text-lg font-bold text-eclipse-text-main mb-1">
-                              Price Discovery Shielded
+                              Private Positioning Active
                             </h3>
                             <p className="text-sm text-eclipse-text-muted max-w-sm text-center">
                               This market is running inside a MagicBlock TEE.
-                              Live odds, positions, and volumes are completely
-                              hidden to prevent front-running.
+                              Individual positions stay private while aggregate
+                              odds remain visible for real price discovery.
                             </p>
                           </>
                         ) : (
@@ -401,8 +407,8 @@ export default function MarketDetailPage() {
                         <Shield className="w-5 h-5 text-[#22c55e] shrink-0 mt-0.5" />
                         <span>
                           This market is running inside MagicBlock&apos;s Ephemeral
-                          Rollup (TEE). Your live positions and pool balances
-                          are hidden until the oracle resolves the market.
+                          Rollup (TEE). Your side and size stay private; only
+                          aggregate odds are visible for market pricing.
                         </span>
                       </div>
                     )}
@@ -529,6 +535,7 @@ export default function MarketDetailPage() {
                     <TradePanel
                       marketAddress={marketId}
                       prices={prices}
+                      quoteState={quoteState}
                       onTradeComplete={() => {
                         loadMarket();
                         loadWalletPosition();
