@@ -135,21 +135,24 @@ impl PythagoreanCurve {
         u128_to_u64(collateral_out)
     }
 
-    /// Return the current side price in basis points.
+    /// Return the current side probability/quote in basis points.
     ///
-    /// price_bps = target_supply / reserves * 10_000
+    /// price_bps = target_supply / (target_supply + other_supply) * 10_000
     ///
     /// 10_000 = 1.0
-    /// 7_071  ≈ 0.7071
-    pub fn get_price_bps(reserves: u64, target_supply: u64, _other_supply: u64) -> Result<u64> {
-        require!(reserves > 0, AmmError::InvalidReserves);
+    /// 5_000  = 0.5
+    pub fn get_price_bps(_reserves: u64, target_supply: u64, other_supply: u64) -> Result<u64> {
+        let total_supply = target_supply
+            .checked_add(other_supply)
+            .ok_or(AmmError::Overflow)?;
+        require!(total_supply > 0, AmmError::InvalidReserves);
 
         let numerator = (target_supply as u128)
             .checked_mul(10_000)
             .ok_or(AmmError::Overflow)?;
 
         let price = numerator
-            .checked_div(reserves as u128)
+            .checked_div(total_supply as u128)
             .ok_or(AmmError::DivisionByZero)?;
 
         u128_to_u64(price)
@@ -222,6 +225,72 @@ fn checked_square(value: u128) -> Result<u128> {
 fn u128_to_u64(value: u128) -> Result<u64> {
     require!(value <= u64::MAX as u128, AmmError::Overflow);
     Ok(value as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const USDC: u64 = 1_000_000;
+
+    #[test]
+    fn balanced_initial_pool_quotes_fifty_fifty() {
+        let reserves = 100 * USDC;
+        let supply = PythagoreanCurve::initial_balanced_supply(reserves).unwrap();
+
+        let yes_price = PythagoreanCurve::get_price_bps(reserves, supply, supply).unwrap();
+        let no_price = PythagoreanCurve::get_price_bps(reserves, supply, supply).unwrap();
+
+        assert_eq!(yes_price, 5_000);
+        assert_eq!(no_price, 5_000);
+    }
+
+    #[test]
+    fn buying_yes_mints_curve_shares_and_moves_quote() {
+        let reserves = 100 * USDC;
+        let yes_supply = PythagoreanCurve::initial_balanced_supply(reserves).unwrap();
+        let no_supply = yes_supply;
+        let collateral_in = 10 * USDC;
+
+        let yes_shares =
+            PythagoreanCurve::get_shares_to_mint(reserves, yes_supply, no_supply, collateral_in)
+                .unwrap();
+
+        assert!(yes_shares > 0);
+        assert_ne!(yes_shares, collateral_in);
+
+        let new_yes_supply = yes_supply + yes_shares;
+        let yes_price =
+            PythagoreanCurve::get_price_bps(reserves + collateral_in, new_yes_supply, no_supply)
+                .unwrap();
+        let no_price =
+            PythagoreanCurve::get_price_bps(reserves + collateral_in, no_supply, new_yes_supply)
+                .unwrap();
+
+        assert!(yes_price > 5_000);
+        assert!(no_price < 5_000);
+        assert!(yes_price + no_price >= 9_999);
+        assert!(yes_price + no_price <= 10_000);
+    }
+
+    #[test]
+    fn proportional_payout_never_exceeds_reserves() {
+        let reserves = 125 * USDC;
+        let winner_a_shares = 25 * USDC;
+        let winner_b_shares = 75 * USDC;
+        let total_winning_shares = winner_a_shares + winner_b_shares;
+
+        let payout_a =
+            PythagoreanCurve::proportional_payout(winner_a_shares, total_winning_shares, reserves)
+                .unwrap();
+        let payout_b =
+            PythagoreanCurve::proportional_payout(winner_b_shares, total_winning_shares, reserves)
+                .unwrap();
+
+        assert!(payout_a + payout_b <= reserves);
+        assert_eq!(payout_a, 31_250_000);
+        assert_eq!(payout_b, 93_750_000);
+    }
 }
 
 /// Absolute difference between two u128 values.

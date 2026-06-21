@@ -4,6 +4,7 @@ use anchor_spl::{
     token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
+use crate::amm::PythagoreanCurve;
 use crate::state::{
     Config, ConfigError, Market, MarketError, MarketOracleKind, MarketStatus, Outcome,
     PriceDirection, PrivatePositionState, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
@@ -245,6 +246,8 @@ impl<'info> CreatePrivateMarket<'info> {
             self.collateral_mint.decimals,
         )?;
 
+        let initial_virtual_supply = PythagoreanCurve::initial_balanced_supply(initial_liquidity)?;
+
         // Initialize public market shell.
         self.market.set_inner(Market {
             id: market_id,
@@ -255,9 +258,9 @@ impl<'info> CreatePrivateMarket<'info> {
             collateral_mint: self.collateral_mint.key(),
             vault: self.vault.key(),
             total_deposited: initial_liquidity,
-            live_reserves: 0,
-            live_yes_supply: 0,
-            live_no_supply: 0,
+            live_reserves: initial_liquidity,
+            live_yes_supply: initial_virtual_supply,
+            live_no_supply: initial_virtual_supply,
             final_reserves: 0,
             total_claimable_settled: 0,
             total_claimed: 0,
@@ -294,8 +297,8 @@ impl<'info> CreatePrivateMarket<'info> {
             self.creator.key(),
             initial_liquidity,
             0,
-            initial_liquidity,
-            initial_liquidity,
+            initial_virtual_supply,
+            initial_virtual_supply,
             bumps.creator_private_position,
         );
 

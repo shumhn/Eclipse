@@ -721,7 +721,10 @@ impl<'info> DelegateTopupReceipt<'info> {
             receipt.nonce == expected_nonce,
             DelegateError::TopupReceiptNonceMismatch
         );
-        require!(!receipt.consumed, DelegateError::TopupReceiptAlreadyConsumed);
+        require!(
+            !receipt.consumed,
+            DelegateError::TopupReceiptAlreadyConsumed
+        );
 
         let authority = self.authority.key();
         require!(

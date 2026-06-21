@@ -6,8 +6,8 @@ use ephemeral_rollups_sdk::ephem::{FoldableIntentBuilder, MagicIntentBundleBuild
 use crate::amm::PythagoreanCurve;
 use crate::state::{
     Config, ConfigError, Market, MarketError, MarketOracleKind, MarketStatus, Outcome,
-    PositionError, PriceDirection, PrivateMarketState, PrivatePositionState, PrivateStateError,
-    PositionTopupReceipt, TopupReceiptError, TraderPosition, PRIVATE_MARKET_STATE_DISCRIMINATOR,
+    PositionError, PositionTopupReceipt, PriceDirection, PrivateMarketState, PrivatePositionState,
+    PrivateStateError, TopupReceiptError, TraderPosition, PRIVATE_MARKET_STATE_DISCRIMINATOR,
     PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
@@ -121,6 +121,7 @@ pub struct InitializePrivateMarketState<'info> {
     ///
     /// This sponsors/anchors the ER private market state.
     #[account(
+        mut,
         seeds = [Market::SEED, market.id.to_le_bytes().as_ref()],
         bump = market.bump,
         constraint = market.creator == initializer.key() || config.admin == initializer.key() @ ConfigError::Unauthorized,
@@ -182,6 +183,7 @@ impl<'info> InitializePrivateMarketState<'info> {
         );
 
         let initial_liquidity = creator_position.l1_idle_collateral()?;
+        let initial_virtual_supply = PythagoreanCurve::initial_balanced_supply(initial_liquidity)?;
 
         require!(
             initial_liquidity >= self.config.min_liquidity,
@@ -196,10 +198,15 @@ impl<'info> InitializePrivateMarketState<'info> {
         require!(
             creator_private_position.collateral_deposited == initial_liquidity
                 && creator_private_position.collateral_available == 0
-                && creator_private_position.yes_shares == initial_liquidity
-                && creator_private_position.no_shares == initial_liquidity,
+                && creator_private_position.yes_shares == initial_virtual_supply
+                && creator_private_position.no_shares == initial_virtual_supply,
             PrivateRollupInstructionError::InvalidAccount
         );
+
+        self.market.live_reserves = initial_liquidity;
+        self.market.live_yes_supply = initial_virtual_supply;
+        self.market.live_no_supply = initial_virtual_supply;
+        self.market.exit(&crate::ID)?;
 
         emit!(PrivateMarketStateInitialized {
             market: self.market.key(),
@@ -207,8 +214,8 @@ impl<'info> InitializePrivateMarketState<'info> {
             private_market_state: self.market.key(),
             creator_private_position: self.private_position.key(),
             reserves: initial_liquidity,
-            yes_supply: initial_liquidity,
-            no_supply: initial_liquidity,
+            yes_supply: initial_virtual_supply,
+            no_supply: initial_virtual_supply,
             timestamp: clock.unix_timestamp,
         });
 
@@ -461,21 +468,37 @@ impl<'info> PlacePrivatePrediction<'info> {
         private_position.assert_market(&self.market.key())?;
         private_position.assert_not_claimed()?;
 
+        let shares_to_mint = if predict_yes {
+            PythagoreanCurve::get_shares_to_mint(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+                amount,
+            )?
+        } else {
+            PythagoreanCurve::get_shares_to_mint(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+                amount,
+            )?
+        };
+
         private_position.spend_collateral(amount)?;
 
         if predict_yes {
-            private_position.add_yes_shares(amount)?;
+            private_position.add_yes_shares(shares_to_mint)?;
             self.market.live_yes_supply = self
                 .market
                 .live_yes_supply
-                .checked_add(amount)
+                .checked_add(shares_to_mint)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         } else {
-            private_position.add_no_shares(amount)?;
+            private_position.add_no_shares(shares_to_mint)?;
             self.market.live_no_supply = self
                 .market
                 .live_no_supply
-                .checked_add(amount)
+                .checked_add(shares_to_mint)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         }
 
@@ -497,7 +520,10 @@ impl<'info> PlacePrivatePrediction<'info> {
             self.magic_context.to_account_info(),
             self.magic_program.to_account_info(),
         )
-        .commit(&[self.private_position.to_account_info()])
+        .commit(&[
+            self.market.to_account_info(),
+            self.private_position.to_account_info(),
+        ])
         .build_and_invoke()?;
 
         Ok(())
@@ -566,7 +592,10 @@ impl<'info> ConsumePositionTopupReceiptEr<'info> {
             clock.unix_timestamp < self.market.end_time as i64,
             PrivateRollupInstructionError::MarketEnded
         );
-        require!(self.receipt.amount > 0, TopupReceiptError::InvalidTopupReceiptAmount);
+        require!(
+            self.receipt.amount > 0,
+            TopupReceiptError::InvalidTopupReceiptAmount
+        );
         require_keys_eq!(
             self.receipt.market,
             self.market.key(),
@@ -695,7 +724,10 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
             clock.unix_timestamp < self.market.end_time as i64,
             PrivateRollupInstructionError::MarketEnded
         );
-        require!(self.receipt.amount > 0, TopupReceiptError::InvalidTopupReceiptAmount);
+        require!(
+            self.receipt.amount > 0,
+            TopupReceiptError::InvalidTopupReceiptAmount
+        );
         require_keys_eq!(
             self.receipt.market,
             self.market.key(),
@@ -715,21 +747,37 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
 
         self.position.add_deposit(self.receipt.amount)?;
         private_position.add_collateral(self.receipt.amount)?;
+        let shares_to_mint = if predict_yes {
+            PythagoreanCurve::get_shares_to_mint(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+                amount,
+            )?
+        } else {
+            PythagoreanCurve::get_shares_to_mint(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+                amount,
+            )?
+        };
+
         private_position.spend_collateral(amount)?;
 
         if predict_yes {
-            private_position.add_yes_shares(amount)?;
+            private_position.add_yes_shares(shares_to_mint)?;
             self.market.live_yes_supply = self
                 .market
                 .live_yes_supply
-                .checked_add(amount)
+                .checked_add(shares_to_mint)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         } else {
-            private_position.add_no_shares(amount)?;
+            private_position.add_no_shares(shares_to_mint)?;
             self.market.live_no_supply = self
                 .market
                 .live_no_supply
-                .checked_add(amount)
+                .checked_add(shares_to_mint)
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         }
 

@@ -3412,6 +3412,7 @@ export type PredictionMarket = {
             "",
             "This sponsors/anchors the ER private market state."
           ],
+          "writable": true,
           "pda": {
             "seeds": [
               {

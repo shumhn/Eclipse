@@ -15,7 +15,10 @@ impl PositionTopupReceipt {
     pub const SEED: &'static [u8] = b"position_topup_receipt";
 
     pub fn assert_unconsumed(&self) -> Result<()> {
-        require!(!self.consumed, TopupReceiptError::TopupReceiptAlreadyConsumed);
+        require!(
+            !self.consumed,
+            TopupReceiptError::TopupReceiptAlreadyConsumed
+        );
         Ok(())
     }
 
