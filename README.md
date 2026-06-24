@@ -1,126 +1,89 @@
 # Eclipse
 
-Private prediction markets on Solana, powered by MagicBlock Ephemeral Rollups.
+Private AMM prediction markets on Solana, powered by MagicBlock Ephemeral Rollups.
 
-Eclipse is a devnet private prediction market built on Solana using MagicBlock Private Ephemeral Rollups. Markets run as binary YES/NO questions with private live positioning during the trading window, then commit the resolved outcome back to Solana when the market closes. The current automated oracle-backed flow supports BTC, ETH, SOL, and JUP price markets, while the same private market flow also supports manually resolved YES/NO outcomes.
+Eclipse is a devnet prediction market prototype where Solana holds the public market shell, collateral vaults, and final settlement state, while MagicBlock's TEE-backed Ephemeral Rollup executes the active trading lifecycle. Traders buy virtual YES/NO AMM shares during the market window; individual wallet positions are kept in delegated private state, and final outcomes are committed back to Solana after resolution.
 
-Live app: https://eclipse-predict.vercel.app  
-Program ID: `79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t`  
-Network: Solana devnet
-
----
-
-## The Problem
-
-Normal onchain prediction markets are transparent while they are still active. That creates bad market behavior:
-
-- **Visible positions:** traders reveal wallet, size, and direction before the event resolves.
-- **Copy-trading and insider positioning:** a strong trader can accidentally signal the answer to everyone else.
-- **Front-running risk:** public state changes can leak market intent before settlement.
-- **Manual resolution overhead:** markets need a reliable close-time path so expired markets do not stay stuck.
-- **Weak creation UX:** market creators need clear questions, deadlines, resolution rules, and reliable data sources.
-
-For prediction markets, this matters a lot. If everyone can see who bought YES or NO before the deadline, the market becomes less about prediction and more about watching other wallets.
+Live app: https://eclipse-predict.vercel.app<br>
+Program ID: `79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t`<br>
+Network: Solana devnet<br>
+Collateral mint: Devnet USDC `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`
 
 ---
 
-## The Eclipse Approach
+## What Eclipse Does
 
-Eclipse uses Solana for custody, public shells, and final settlement, while MagicBlock handles the fast live execution layer.
-
-From the MagicBlock prediction-market model:
-
-- **State runs inside an Ephemeral Rollup**
-- **Positions stay hidden during the active resolution window**
-- **Outcomes are committed onchain at close**
-- **The design reduces floor manipulation and insider positioning**
-
-In practice, the app creates Solana accounts for the market and trader position, delegates those accounts into MagicBlock, executes private prediction actions through the Ephemeral Rollup, and commits final outcomes back to Solana after expiry.
-
----
-
-## What Works Today
-
-This repo currently supports:
+Eclipse lets users create and trade binary YES/NO markets with a privacy-preserving live trading layer.
 
 - Create private binary prediction markets.
-- Create automated crypto price markets using MagicBlock/Pyth feeds.
-- Current automated price assets: `BTC`, `ETH`, `SOL`, `JUP`.
+- Create automated crypto price markets for `BTC`, `ETH`, `SOL`, and `JUP`.
+- Resolve price markets from MagicBlock/Pyth price feeds.
 - Support manually resolved YES/NO markets.
-- Show live MagicBlock/Pyth prices in the create-market flow.
-- Suggest target prices from the live price, such as `+1%`, `+3%`, `+5%`.
-- Generate cleaner market questions with a real resolution date/time.
-- Delegate markets and positions into MagicBlock.
-- Trade through the private market flow.
-- Auto-resolve expired automated price markets through a crank endpoint.
-- Settle resolved positions through keeper/admin settlement paths.
-- Deploy the Next.js app on Vercel.
+- Seed each market with initial USDC liquidity.
+- Delegate market and position accounts into MagicBlock.
+- Trade through a virtual AMM instead of public YES/NO token mints.
+- Fund a market-specific private position before trading, or use the direct top-up plus trade flow.
+- Keep individual side, shares, and position state inside TEE/PER while the market is active.
+- Keep aggregate AMM odds visible for price discovery.
+- Settle winners after resolution and claim USDC from the Solana vault.
 
-This is a devnet build.
+This is a devnet build, not a production deployment.
 
 ---
 
-## Architecture
+## Privacy Model
+
+The short version:
 
 ```text
-User / Admin
-   |
-   v
-Next.js App
-   |
-   |-- Solana devnet RPC
-   |     - creates market shell accounts
-   |     - stores escrow vaults
-   |     - stores final resolved state
-   |
-   |-- MagicBlock Ephemeral RPC
-   |     - delegated market state
-   |     - delegated position state
-   |     - private trading lifecycle
-   |
-   |-- Resolution sources
-         - live BTC / ETH / SOL / JUP prices
-         - close-time price resolution
-         - manually resolved YES/NO outcomes
+Public odds, private positions.
 ```
 
-### Solana Program
+Eclipse does not try to hide the existence of a market, the oracle price, or the aggregate AMM odds. Those are public by design so users can price trades.
 
-The Anchor program lives in:
+What is private during the active window:
+
+- a wallet's YES/NO side
+- a wallet's virtual shares
+- a wallet's private position balance
+- the final per-wallet claim until settlement writes the claimable amount back
+
+What remains visible or inferable:
+
+- the market account exists on Solana
+- market creation and initial liquidity are visible
+- funding/top-up transactions can reveal collateral moved into a market
+- aggregate AMM reserves and YES/NO supply are visible so the UI can show odds
+- if only one trader moves a market between refreshes, observers may infer approximate side/size from the aggregate odds movement
+
+This is why the honest pitch is:
+
+> Eclipse hides user-level position and order-flow details inside MagicBlock TEE state while keeping aggregate market prices visible for discovery and settlement.
+
+---
+
+## How The AMM Works
+
+Each market has a virtual YES/NO AMM state:
+
+- `live_reserves`
+- `live_yes_supply`
+- `live_no_supply`
+
+The app displays odds from aggregate virtual supply:
 
 ```text
-programs/prediction_market
+yes_price = yes_supply / (yes_supply + no_supply)
+no_price  = no_supply  / (yes_supply + no_supply)
 ```
 
-Important instruction groups:
+When a user buys YES or NO, the program mints virtual shares inside the private position state and updates the aggregate market state. No public YES/NO SPL outcome tokens are minted during active trading.
 
-- `create_private_market` - creates a manually resolved private prediction market.
-- `create_price_market` - creates an automated price market with target, direction, and feed.
-- `delegate_market_into_tee` - delegates the market shell into MagicBlock.
-- `delegate_position_into_tee` - delegates a trader position shell.
-- `delegate_private_position_into_tee` - delegates the private position state.
-- `place_private_prediction` - places a YES/NO prediction during the active window.
-- `resolve_private_market_er` - resolves a manually resolved market after expiry.
-- `resolve_price_market_er` - resolves an expired price market using the MagicBlock/Pyth feed.
-- `settle_private_position_er` - settles a trader after resolution.
-- `settle_private_position_by_keeper_er` - keeper/admin settlement path.
+One winning virtual share is a claim on the final market reserves. The frontend quote shows:
 
-### Frontend / API
-
-The Next.js app lives in:
-
-```text
-app
-```
-
-Important app paths:
-
-- `app/src/components/CreateMarketModal.tsx` - market creation UI.
-- `app/src/components/PriceChart.tsx` - live price chart.
-- `app/src/hooks/useMagicBlockLivePriceFeeds.ts` - live feed subscription/fallback.
-- `app/src/lib/priceFeeds.ts` - supported BTC/ETH/SOL/JUP feed registry.
-- `app/src/services/magicblock-indexer.ts` - Solana + MagicBlock service layer.
-- `app/src/app/api/crank/run/route.ts` - unified resolve + settle crank.
+- average price
+- estimated shares
+- projected payout if the selected side resolves correctly
 
 ---
 
@@ -128,43 +91,45 @@ Important app paths:
 
 ### 1. Create
 
-An admin/user creates a binary private prediction market. For a manually resolved market, the question can be any clear YES/NO event with a deadline:
-
-```text
-Will Team A win the final by Sunday, 8:00 PM?
-```
-
-For an automated crypto price market, the question is tied to a live MagicBlock/Pyth feed:
-
-```text
-Will SOL be above $77.57 on Jun 16, 2026, 12:00 PM?
-```
-
-The market stores:
+A user creates a binary market with:
 
 - question
-- end time
-- initial liquidity
-- resolution source: manual resolver or MagicBlock/Pyth price feed
-- optional price direction: `above` or `below`
-- optional target price
-- optional MagicBlock/Pyth feed account
+- resolution timestamp
+- initial USDC liquidity
+- resolution mode
+- optional price target, direction, and feed
+
+Price market example:
+
+```text
+Will BTC be above $64,811 on Jun 22, 2026, 12:02 PM?
+```
 
 ### 2. Delegate
 
-The public market shell and trader position state are delegated into MagicBlock. The base Solana layer still anchors the market, but active trading state moves into the Ephemeral Rollup.
+The app delegates the market shell and private state into MagicBlock. Solana remains the base layer for custody and settlement, while the active trading state runs in the Ephemeral Rollup.
 
-### 3. Trade
+### 3. Fund Position
 
-Users trade YES/NO while the market is active. The app closes trading after the configured resolution timestamp.
+Each market has a market-specific private position balance. A user can:
 
-### 4. Resolve
+- deposit into the market first, then trade from that private balance
+- or use the direct flow that tops up and trades in one path
 
-After `end_time`, the market resolves from its configured source.
+Wallet-level Shielded USDC and market-specific private position balance are separate.
 
-For manually resolved markets, the configured resolver signs the final YES/NO outcome.
+### 4. Trade
 
-For price markets, the crank reads the selected MagicBlock/Pyth price feed and resolves:
+Users buy YES or NO while the market is active. The trade is submitted to the MagicBlock TEE/PER RPC. The public event intentionally does not reveal side, amount, or per-wallet share data.
+
+### 5. Resolve
+
+After the deadline:
+
+- manual markets are resolved by the configured resolver/admin path
+- price markets resolve by comparing the close-time MagicBlock/Pyth price against the target
+
+For `above` markets:
 
 ```text
 YES if observed_price >= target_price
@@ -173,75 +138,156 @@ NO otherwise
 
 For `below` markets, the comparison is inverted.
 
-### 5. Commit + Settle
+### 6. Settle And Claim
 
-The resolved outcome and final settlement state are committed back to Solana. Users can then claim based on the winning side and their settled claimable amount.
+After resolution, the position is settled and claimable USDC can be committed back to the public position shell. The user then claims from the Solana vault.
+
+---
+
+## Architecture
+
+```text
+Browser / Wallet
+   |
+   v
+Next.js app
+   |
+   |-- Solana devnet RPC
+   |     - market shell PDAs
+   |     - collateral vaults
+   |     - public creation/funding/final settlement
+   |
+   |-- MagicBlock TEE / Ephemeral RPC
+   |     - delegated market state
+   |     - delegated private position state
+   |     - active YES/NO trade execution
+   |
+   |-- Price feeds
+         - MagicBlock/Pyth live feeds
+         - Hermes/Pyth fallback for UI display
+```
+
+Important program path:
+
+```text
+programs/prediction_market
+```
+
+Important app paths:
+
+```text
+app/src/components/CreateMarketModal.tsx
+app/src/components/TradePanel.tsx
+app/src/components/MarketCard.tsx
+app/src/components/PriceChart.tsx
+app/src/lib/api.ts
+app/src/lib/priceFeeds.ts
+app/src/services/magicblock-indexer.ts
+app/src/app/api/markets/prepare-create/route.ts
+app/src/app/api/markets/finalize/route.ts
+app/src/app/api/trading/prepare-funds/route.ts
+app/src/app/api/trading/prepare-private/route.ts
+app/src/app/api/positions/route.ts
+app/src/app/api/crank/run/route.ts
+```
+
+---
+
+## Program Instructions
+
+The Anchor program exposes the full lifecycle:
+
+- `initialize` - initialize protocol config.
+- `set_protocol_paused` - pause or unpause protocol actions.
+- `update_oracle` - update the configured oracle/resolver authority.
+- `update_tee_validator` - update the MagicBlock/PER validator identity.
+- `update_collateral_mint` - update the collateral mint used by newly created markets.
+- `create_private_market` - create a manual private prediction market.
+- `create_price_market` - create a MagicBlock/Pyth price market.
+- `open_position` - create a trader position shell.
+- `deposit_collateral` - deposit USDC into the market vault before private activation.
+- `create_position_topup_receipt` - fund an already delegated private position through a receipt.
+- `withdraw_collateral` - withdraw idle L1 collateral before PER activation.
+- `create_market_permission` - create the MagicBlock permission account for a market.
+- `create_position_permission` - create the MagicBlock permission account for a position shell.
+- `create_private_position_permission` - create the MagicBlock permission account for private position state.
+- `create_topup_receipt_permission` - create the MagicBlock permission account for a top-up receipt.
+- `delegate_market_into_tee` - delegate market state into MagicBlock.
+- `delegate_position_into_tee` - delegate public trader position shell.
+- `delegate_private_position_into_tee` - delegate private position state.
+- `delegate_topup_receipt_into_tee` - delegate a top-up receipt for private consumption.
+- `commit_market` / `commit_and_undelegate` - commit market state back to Solana.
+- `commit_position` / `commit_position_and_undelegate` - commit settled position state back to Solana.
+- `initialize_private_market_state` - initialize delegated AMM state.
+- `initialize_private_position_state` - initialize delegated private trader state.
+- `place_private_prediction` - place a private YES/NO trade from available private balance.
+- `consume_position_topup_receipt_er` - consume a delegated top-up receipt into private balance.
+- `consume_topup_and_place_private_prediction_er` - top up and trade through the private path.
+- `resolve_private_market_er` - resolve a manual market inside the ER.
+- `resolve_price_market_er` - resolve a price market from the configured price feed.
+- `resolve_price_market_with_observed_price_er` - resolve a price market with an observed historical price.
+- `settle_private_position_er` - compute a user's final claim in the ER.
+- `settle_private_position_by_keeper_er` - keeper/admin settlement path.
+- `claim_settled_private_position` - claim settled USDC from the Solana vault.
+
+---
+
+## Frontend/API Flow
+
+Market creation is wallet-signed:
+
+1. `POST /api/markets/prepare-create`
+2. wallet signs and sends the base-layer transaction
+3. `POST /api/markets/finalize`
+4. app delegates the market/private state and records proof signatures
+
+Private trading is also wallet-signed:
+
+1. wallet gets a MagicBlock TEE auth token
+2. app prepares funding if the market private balance is too low
+3. app prepares a private trade for the Ephemeral RPC
+4. wallet signs and sends to MagicBlock TEE/PER
+5. app refreshes the user's private position and aggregate AMM odds
+
+The market page refreshes active market state frequently so YES/NO odds move with the AMM.
+
+Main API groups:
+
+- `/api/markets` - list markets and prepare/create/finalize market creation.
+- `/api/markets/[id]` - fetch one market by id or address.
+- `/api/markets/tracked` - read tracked market proofs and metadata.
+- `/api/oracles/price-feeds` - fetch supported live crypto price feeds.
+- `/api/positions` - fetch a wallet's position, using a TEE auth token when private state is delegated.
+- `/api/trading/prepare-position` - open/fund a position shell or create a top-up receipt.
+- `/api/trading/prepare-funds` - consume private funding/top-up inside the TEE path.
+- `/api/trading/prepare-private` - prepare a private YES/NO trade for the Ephemeral RPC.
+- `/api/trading/prepare-settle` - prepare private settlement after resolution.
+- `/api/trading/prepare-claim` - prepare the final Solana claim transaction.
+- `/api/trading/commit-position` - commit position state back to Solana.
+- `/api/trading/delegate-position` and `/api/trading/delegate-topup` - delegation helpers.
+- `/api/trading/resolve` - resolver/admin resolution path.
+- `/api/trading/submit` - submit a signed base-layer transaction.
+- `/api/tee/signature` - verify a TEE transaction signature against MagicBlock RPC.
+- `/api/crank/run`, `/api/crank/price-markets`, `/api/crank/settle-positions` - keeper/crank endpoints.
+- `/api/sports/events` and `/api/ai/sports-markets` - sports discovery and AI-assisted market generation helpers.
 
 ---
 
 ## Resolution Sources
 
-Eclipse currently supports two resolution modes:
-
 | Mode | Use Case | Status |
 | --- | --- | --- |
-| Manual resolver | Manually resolved YES/NO markets | Supported |
+| Manual resolver | Any clear YES/NO event | Supported |
 | MagicBlock/Pyth price feed | Automated crypto price markets | Supported |
 
-Automated price feeds are intentionally limited for now:
+Supported automated assets:
 
-| Asset | Feed Type |
-| --- | --- |
-| BTC | MagicBlock/Pyth |
-| ETH | MagicBlock/Pyth |
-| SOL | MagicBlock/Pyth |
-| JUP | MagicBlock/Pyth |
-
-The app uses MagicBlock live account updates first and Hermes/Pyth fallback polling when needed for automated price markets.
-
----
-
-## Crank / Resolution
-
-Expired markets are resolved by the app crank endpoint:
-
-```text
-app/src/app/api/crank/run/route.ts
-```
-
-The crank does two jobs:
-
-1. Resolve expired price markets by reading the selected live feed at close.
-2. Settle resolved positions when settlement is available.
-
-On Vercel, the crank route is protected with `CRANK_SECRET` / `CRON_SECRET`.
-
-For a free hosted crank, use the Cloudflare Worker in:
-
-```text
-workers/crank
-```
-
-It triggers once per minute and calls the Vercel crank endpoint:
-
-```text
-https://eclipse-predict.vercel.app/api/crank/run
-```
-
-Cloudflare Worker setup:
-
-```bash
-cd workers/crank
-npm install
-npx wrangler secret put CRANK_SECRET
-npm run deploy
-```
-
-Use the same `CRANK_SECRET` value that is configured on Vercel.
-
-There is also a GitHub Actions fallback in `.github/workflows/crank.yml`, which runs every 5 minutes.
-
-Manual markets can still be resolved by the configured oracle/admin path.
+| Asset | Symbol | Feed |
+| --- | --- | --- |
+| BTC | `BTCUSD` | MagicBlock/Pyth |
+| ETH | `ETHUSD` | MagicBlock/Pyth |
+| SOL | `SOLUSD` | MagicBlock/Pyth |
+| JUP | `JUPUSD` | MagicBlock/Pyth |
 
 ---
 
@@ -250,9 +296,9 @@ Manual markets can still be resolved by the configured oracle/admin path.
 ### 1. Install dependencies
 
 ```bash
-pnpm install
+npm install
 cd app
-pnpm install
+npm install
 ```
 
 ### 2. Configure environment
@@ -269,16 +315,21 @@ SOLANA_PRIVATE_KEY=[...]
 SOLANA_ADMIN_PRIVATE_KEY=[...]
 SOLANA_ORACLE_PRIVATE_KEY=[...]
 
-MARKET_SCAN_LIMIT=50
+MARKET_SCAN_LIMIT=256
 CRANK_SECRET=local-secret
 CRON_SECRET=local-secret
+
+# Optional
+PYTH_API_KEY=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ### 3. Run the app
 
 ```bash
 cd app
-pnpm dev
+npm run dev
 ```
 
 Open:
@@ -298,49 +349,104 @@ curl -X POST http://localhost:3000/api/crank/run \
 
 ## Useful Commands
 
-### Build frontend
+Build the Solana program:
 
 ```bash
-cd app
-pnpm build
+anchor build
 ```
 
-### Run frontend lint
-
-```bash
-cd app
-pnpm lint
-```
-
-### Run Anchor tests
+Run Anchor tests:
 
 ```bash
 anchor test
 ```
 
-### Check program ID
-
-```bash
-anchor keys list
-```
-
-### Deploy program to devnet
+Deploy to devnet:
 
 ```bash
 anchor deploy --provider.cluster devnet
 ```
 
+Check program id:
+
+```bash
+anchor keys list
+```
+
+Run the web app:
+
+```bash
+cd app
+npm run dev
+```
+
+Type-check the web app:
+
+```bash
+cd app
+npm run type-check
+```
+
+Build the web app:
+
+```bash
+cd app
+npm run build
+```
+
+---
+
+## Crank / Keeper
+
+Expired markets can be advanced by:
+
+```text
+app/src/app/api/crank/run/route.ts
+```
+
+The crank handles:
+
+1. resolving expired price markets
+2. settling resolved positions when possible
+
+The crank route is protected by `CRANK_SECRET` / `CRON_SECRET`.
+
+There is also a Cloudflare Worker in:
+
+```text
+workers/crank
+```
+
+Worker setup:
+
+```bash
+cd workers/crank
+npm install
+npx wrangler secret put CRANK_SECRET
+npm run deploy
+```
+
+---
+
+## Current Limitations
+
+- Devnet only.
+- Old pre-AMM-fix markets are filtered out of the main UI.
+- Aggregate AMM odds and reserves are intentionally visible.
+- Funding/top-up movements can be visible even though trade side and private position are hidden.
+- If a market has very little activity, a single trade may be inferable from aggregate odds movement.
+- Solana Explorer may show MagicBlock TEE transactions as finalized but without decoded inner private instructions.
+- The hosted app depends on MagicBlock devnet RPC, Solana devnet RPC, and supported price feed availability.
+
 ---
 
 ## Project Status
 
-Eclipse is a working devnet private prediction market prototype using Solana, MagicBlock Ephemeral Rollups, and MagicBlock/Pyth price feeds.
+Eclipse is a working devnet prototype for private AMM prediction markets:
 
-The app is focused on proving the full lifecycle:
-
-1. Create a private prediction market.
-2. Delegate active state into MagicBlock.
-3. Trade while positions stay private during the active window.
-4. Resolve after the configured deadline.
-5. Commit the final outcome back to Solana.
-6. Settle winning positions.
+1. Create a market on Solana.
+2. Delegate active market and position state into MagicBlock.
+3. Trade YES/NO through private TEE/PER state.
+4. Keep aggregate odds public while individual positions remain private.
+5. Resolve from manual input or MagicBlock/Pyth price feeds.
+6. Settle and claim from the Solana collateral vault.
