@@ -54,6 +54,7 @@ export default function TradePanel({
   const [fundingSuccess, setFundingSuccess] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [txSignature, setTxSignature] = useState<string | null>(null);
+  const [activeTeeToken, setActiveTeeToken] = useState<string | null>(null);
   const [depositSignature, setDepositSignature] = useState<string | null>(null);
   const [delegateSignature, setDelegateSignature] = useState<string | null>(null);
   const [teeProof, setTeeProof] = useState<{
@@ -152,6 +153,7 @@ export default function TradePanel({
     try {
       const fundUsdc = parseFloat(fundAmount);
       const teeToken = await getTeeToken();
+      setActiveTeeToken(teeToken);
       const setup = await preparePositionTransaction({
         marketAddress,
         amountUsdc: fundUsdc,
@@ -275,6 +277,7 @@ export default function TradePanel({
 
       let signature: string;
       const teeToken = positionsHidden ? await getTeeToken() : undefined;
+      if (teeToken) setActiveTeeToken(teeToken);
 
       if (positionsHidden) {
         let prepared: { transaction: string; positionAddress?: string; sendTo?: string } | undefined;
@@ -778,7 +781,7 @@ export default function TradePanel({
                       )}
                       <div className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-white/[0.02] transition-colors">
                         <a 
-                          href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app`} 
+                          href={`https://explorer.solana.com/tx/${txSignature}?cluster=custom&customUrl=https%3A%2F%2Fdevnet-tee.magicblock.app${activeTeeToken ? `%3Ftoken%3D${activeTeeToken}` : ''}`}
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="group flex-1 flex items-center gap-3 truncate font-mono text-[12px] text-[#4ade80]/90 hover:text-[#4ade80] drop-shadow-[0_0_8px_rgba(74,222,128,0.4)] hover:drop-shadow-[0_0_12px_rgba(74,222,128,0.7)] transition-all duration-300"
