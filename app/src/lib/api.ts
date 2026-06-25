@@ -86,6 +86,11 @@ export interface AmmTradeQuote {
   payoutIfWins: number;
 }
 
+export interface AmmSellQuote {
+  collateralOut: number;
+  averagePrice: number;
+}
+
 export interface Position {
   publicKey: string;
   delegated: boolean;
@@ -431,12 +436,41 @@ export function quoteTradeFromAmm(
   const newTargetSquared = (newReserves * newReserves) - (other * other);
   if (newTargetSquared <= 0) return { shares: 0, payoutIfWins: 0 };
 
-  const newTarget = Math.sqrt(newTargetSquared);
+  const newTarget = Math.floor(Math.sqrt(newTargetSquared));
   const shares = Math.max(0, newTarget - target);
   const payoutIfWins = newTarget > 0 ? (shares / newTarget) * newReserves : 0;
   return {
     shares: shares / 1_000_000,
     payoutIfWins: payoutIfWins / 1_000_000,
+  };
+}
+
+export function quoteSellToAmm(
+  quoteState: MarketQuoteState,
+  side: 'yes' | 'no',
+  sharesToSell: number
+): AmmSellQuote {
+  const shares = Math.round(sharesToSell * 1_000_000);
+  if (!Number.isFinite(shares) || shares <= 0) return { collateralOut: 0, averagePrice: 0 };
+
+  const reserves = parseInt(quoteState.reserves, 16) || 0;
+  const yesSupply = parseInt(quoteState.yesSupply, 16) || 0;
+  const noSupply = parseInt(quoteState.noSupply, 16) || 0;
+  if (reserves <= 0 || yesSupply <= 0 || noSupply <= 0) {
+    return { collateralOut: 0, averagePrice: 0 };
+  }
+
+  const target = side === 'yes' ? yesSupply : noSupply;
+  const other = side === 'yes' ? noSupply : yesSupply;
+  if (shares > target) return { collateralOut: 0, averagePrice: 0 };
+
+  const newTarget = target - shares;
+  const newReserves = Math.ceil(Math.sqrt((newTarget * newTarget) + (other * other)));
+  const collateralOut = Math.max(0, reserves - newReserves);
+
+  return {
+    collateralOut: collateralOut / 1_000_000,
+    averagePrice: shares > 0 ? collateralOut / shares : 0,
   };
 }
 

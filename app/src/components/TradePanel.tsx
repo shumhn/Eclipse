@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePhantom, useAccounts, AddressType } from '@phantom/react-sdk';
 import { Settings, CheckCircle, Shield, Copy, Check, Eye, EyeOff, ArrowRight, ExternalLink } from 'lucide-react';
-import { MarketPrices, MarketQuoteState, Position, quoteTradeFromAmm } from '@/lib/api';
+import { MarketPrices, MarketQuoteState, Position, quoteSellToAmm, quoteTradeFromAmm } from '@/lib/api';
 import {
   getOrFetchTeeAuthToken,
   delegatePrivatePosition,
   delegateTopupReceipt,
   preparePrivateFundingTransaction,
+  preparePrivateSellTransaction,
   preparePositionTransaction,
   preparePrivateTradeTransaction,
   prepareTradeTransaction,
@@ -272,12 +273,42 @@ export default function TradePanel({
     setDelegateSignature(null);
 
     try {
-      const amountUsdc = parseFloat(amount);
+      const inputValue = parseFloat(amount);
+      const amountUsdc = inputValue;
       const amountLamports = BigInt(Math.round(amountUsdc * 1_000_000));
+      const sharesLamports = BigInt(Math.round(inputValue * 1_000_000));
+      const ownedSideSharesLamports = side === 'yes' ? yesSharesLamports : noSharesLamports;
 
       let signature: string;
       const teeToken = positionsHidden ? await getTeeToken() : undefined;
       if (teeToken) setActiveTeeToken(teeToken);
+
+      if (tradeType === 'sell') {
+        if (!positionsHidden) {
+          throw new Error('Selling is available for private TEE positions only.');
+        }
+        if (ownedSideSharesLamports < sharesLamports) {
+          throw new Error(`You do not have enough ${side.toUpperCase()} shares to sell.`);
+        }
+
+        const prepared = await preparePrivateSellTransaction({
+          marketAddress,
+          side,
+          shares: inputValue,
+          walletAddress,
+        }, teeToken);
+
+        signature = await signAndSend(
+          prepared.transaction,
+          (tx) => phantom.signTransaction(tx),
+          { sendTo: 'ephemeral', ephemeralToken: teeToken }
+        );
+        setTxSignature(signature);
+        setSuccess(true);
+        setAmount('');
+        onTradeComplete?.();
+        return;
+      }
 
       if (positionsHidden) {
         let prepared: { transaction: string; positionAddress?: string; sendTo?: string } | undefined;
@@ -397,19 +428,26 @@ export default function TradePanel({
   };
 
   const currentPrice = side === 'yes' ? prices.yes : prices.no;
-  
-  const amountUsdc = amount ? parseFloat(amount) : 0;
-  const quote = quoteState
+  const ownedSideSharesLamports = side === 'yes' ? yesSharesLamports : noSharesLamports;
+  const ownedSideShares = Number(ownedSideSharesLamports) / 1_000_000;
+
+  const inputAmount = amount ? parseFloat(amount) : 0;
+  const amountUsdc = tradeType === 'buy' ? inputAmount : 0;
+  const quote = quoteState && tradeType === 'buy'
     ? quoteTradeFromAmm(quoteState, side, amountUsdc)
     : {
         shares: currentPrice > 0 ? amountUsdc / currentPrice : 0,
         payoutIfWins: currentPrice > 0 ? amountUsdc / currentPrice : 0,
       };
+  const sellQuote = quoteState && tradeType === 'sell'
+    ? quoteSellToAmm(quoteState, side, inputAmount)
+    : { collateralOut: inputAmount * currentPrice, averagePrice: currentPrice };
   const quotedShares = quote.shares;
   const quotedPayout = quote.payoutIfWins;
-  const estimatedShares = quotedShares.toFixed(2);
-  const potentialReturn = quotedPayout.toFixed(2);
+  const estimatedShares = (tradeType === 'sell' ? inputAmount : quotedShares).toFixed(2);
+  const potentialReturn = (tradeType === 'sell' ? sellQuote.collateralOut : quotedPayout).toFixed(2);
   const returnPct = amountUsdc > 0 ? ((quotedPayout / amountUsdc - 1) * 100).toFixed(2) : '0.00';
+  const averagePrice = tradeType === 'sell' ? sellQuote.averagePrice : currentPrice;
 
   if (!tradingEnabled) {
     return (
@@ -438,6 +476,17 @@ export default function TradePanel({
               <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
             )}
           </button>
+          {positionsHidden && hasPrivateExposure && (
+            <button
+              className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'sell' ? 'text-white' : 'text-white/60 hover:text-white'}`}
+              onClick={() => setTradeType('sell')}
+            >
+              Sell
+              {tradeType === 'sell' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#2ba859] to-[#22c55e]" />
+              )}
+            </button>
+          )}
           {positionsHidden && (
             <button
               className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'deposit' ? 'text-[#4ade80]' : 'text-[#4ade80]/80 hover:text-[#4ade80]'}`}
@@ -467,7 +516,7 @@ export default function TradePanel({
       <div className="h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
 
       <div className="px-5 pt-4 pb-4">
-        {tradeType === 'buy' && (
+        {(tradeType === 'buy' || tradeType === 'sell') && (
           <>
             {/* Outcome Selector */}
             <div className="flex gap-3 mb-4">
@@ -498,14 +547,20 @@ export default function TradePanel({
             {/* Amount Input */}
             <div className="mb-4 relative group">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-medium text-xs tracking-widest uppercase">Amount</span>
+                <span className="text-white font-medium text-xs tracking-widest uppercase">
+                  {tradeType === 'sell' ? 'Shares to Sell' : 'Amount'}
+                </span>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-white font-semibold tracking-widest uppercase">USDC</span>
+                  <span className="text-[11px] text-white font-semibold tracking-widest uppercase">
+                    {tradeType === 'sell' ? 'Shares' : 'USDC'}
+                  </span>
                 </div>
               </div>
               <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
                 <div className="flex items-center h-12 px-4">
-                  <span className="text-white/60 font-bold text-2xl mr-1">$</span>
+                  <span className="text-white/60 font-bold text-2xl mr-1">
+                    {tradeType === 'sell' ? '#' : '$'}
+                  </span>
                   <input
                     type="number"
                     value={amount}
@@ -516,15 +571,30 @@ export default function TradePanel({
                 </div>
                 {/* Quick Amounts */}
                 <div className="flex justify-center gap-2 px-4 pb-3">
-                  {[1, 5, 10, 100].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => setAmount(val.toString())}
-                      className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150"
-                    >
-                      +${val}
-                    </button>
-                  ))}
+                  {tradeType === 'sell'
+                    ? [
+                        { label: '25%', value: ownedSideShares * 0.25 },
+                        { label: '50%', value: ownedSideShares * 0.5 },
+                        { label: 'Max', value: ownedSideShares },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          onClick={() => setAmount(Math.max(0, item.value).toFixed(2))}
+                          disabled={ownedSideShares <= 0}
+                          className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150 disabled:opacity-40"
+                        >
+                          {item.label}
+                        </button>
+                      ))
+                    : [1, 5, 10, 100].map((val) => (
+                        <button
+                          key={val}
+                          onClick={() => setAmount(val.toString())}
+                          className="px-4 py-1.5 bg-white/[0.04] ring-1 ring-white/[0.06] hover:ring-white/[0.15] hover:bg-white/[0.08] rounded-md text-[11px] font-semibold text-white hover:text-white transition-all duration-150"
+                        >
+                          +${val}
+                        </button>
+                      ))}
                 </div>
               </div>
             </div>
@@ -536,7 +606,9 @@ export default function TradePanel({
                  <div>
                    <div className="font-semibold text-[13px] text-[#4ade80]">Shielded inside TEE</div>
                    <div className="text-white text-xs leading-relaxed mt-0.5">
-                     Your position is hidden until market closes. Market private balance: ${formatUsdcUnits(privateBalanceLamports)}
+                     {tradeType === 'sell'
+                       ? `Owned ${side.toUpperCase()} shares: ${ownedSideShares.toFixed(2)}. Proceeds return to your market private balance.`
+                       : `Your position is hidden until market closes. Market private balance: $${formatUsdcUnits(privateBalanceLamports)}`}
                    </div>
                   </div>
               </div>
@@ -546,17 +618,19 @@ export default function TradePanel({
             <div className="space-y-2.5 mb-4">
               <div className="flex justify-between text-[13px]">
                 <span className="text-white">Avg price</span>
-                <span className="text-white font-medium tabular-nums">{(currentPrice * 100).toFixed(1)}¢</span>
+                <span className="text-white font-medium tabular-nums">{(averagePrice * 100).toFixed(1)}¢</span>
               </div>
               <div className="h-px bg-white/[0.04]" />
               <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">Estimated shares</span>
+                <span className="text-white/80">{tradeType === 'sell' ? 'Shares sold' : 'Estimated shares'}</span>
                 <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
               </div>
               <div className="h-px bg-white/[0.04]" />
               <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">Projected payout if right</span>
-                <span className="text-[#4ade80] font-semibold tabular-nums">${potentialReturn} ({returnPct}%)</span>
+                <span className="text-white/80">{tradeType === 'sell' ? 'Estimated USDC received' : 'Projected payout if right'}</span>
+                <span className="text-[#4ade80] font-semibold tabular-nums">
+                  ${potentialReturn}{tradeType === 'buy' ? ` (${returnPct}%)` : ''}
+                </span>
               </div>
             </div>
 
@@ -568,7 +642,7 @@ export default function TradePanel({
 
             <button
               onClick={handleTrade}
-              disabled={loading || !amountUsdc || !isConnected}
+              disabled={loading || inputAmount <= 0 || !isConnected || (tradeType === 'sell' && inputAmount > ownedSideShares)}
               className="w-full bg-white text-black font-bold py-3.5 rounded-lg transition-all hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed mb-2 relative overflow-hidden flex items-center justify-center group"
             >
               {loading ? (
@@ -578,6 +652,8 @@ export default function TradePanel({
                 </div>
               ) : !isConnected ? (
                 'Connect Wallet to Trade'
+              ) : tradeType === 'sell' ? (
+                'Sell Shares'
               ) : (
                 'Trade'
               )}
