@@ -149,7 +149,7 @@ function MarketsContent() {
 
       <main className="relative z-10 border-t border-eclipse-border/70 pt-32">
         <div className="mx-auto grid max-w-[1560px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="hidden min-h-[calc(100vh-6rem)] border-r border-eclipse-border/80 px-8 py-8 lg:block">
+          <aside className="hidden min-h-[calc(100vh-6rem)] border-r border-eclipse-border/80 px-8 pt-4 pb-8 lg:block">
             <MarketSidebar
               category={category}
               filter={filter}
@@ -359,7 +359,7 @@ function MarketSidebar({
   }
 
   return (
-    <div className="sticky top-32 space-y-8 pt-6">      <div className="space-y-3" aria-label="Asset filters">
+    <div className="sticky top-6 space-y-8 pt-0">      <div className="space-y-3" aria-label="Asset filters">
         <SidebarAssetButton
           active={assetFilter === 'all'}
           asset="ALL"
