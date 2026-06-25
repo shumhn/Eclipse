@@ -557,16 +557,16 @@ export default function TradePanel({
                 </div>
               </div>
               <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
-                <div className="flex items-center h-12 px-4">
-                  <span className="text-white/60 font-bold text-2xl mr-1">
-                    {tradeType === 'sell' ? '#' : '$'}
+                <div className="flex items-center h-16 px-4">
+                  <span className="font-bold text-xl flex-shrink-0 text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+                    {tradeType === 'sell' ? 'Shares' : 'USDC'}
                   </span>
                   <input
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0"
-                    className="w-full bg-transparent text-white font-bold text-2xl outline-none placeholder:text-white/10 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="w-full text-right bg-transparent font-bold text-4xl outline-none placeholder:text-white/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 caret-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]"
                   />
                 </div>
                 {/* Quick Amounts */}

@@ -52,3 +52,6 @@ reference-docs/
 .playwright-mcp/
 DEPLOYMENT.md
 SUMMARY.md
+*.jsonl
+.env*
+txs.txt
