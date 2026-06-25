@@ -471,6 +471,18 @@ pub mod prediction_market {
         ctx.accounts.place_private_prediction(amount, predict_yes)
     }
 
+    /// Sell private YES/NO shares back to the AMM inside MagicBlock / PER.
+    ///
+    /// The released collateral goes back into the trader's market-private
+    /// balance and can be reused for another trade or settled after resolution.
+    pub fn sell_private_prediction(
+        ctx: Context<PlacePrivatePrediction>,
+        shares: u64,
+        sell_yes: bool,
+    ) -> Result<()> {
+        ctx.accounts.sell_private_prediction(shares, sell_yes)
+    }
+
     /// Consume a delegated funded top-up receipt inside PER.
     ///
     /// This credits the trader's private position before a follow-up

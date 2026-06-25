@@ -126,7 +126,9 @@ impl PythagoreanCurve {
             .checked_add(other_squared)
             .ok_or(AmmError::Overflow)?;
 
-        let new_r = integer_sqrt(new_r_squared);
+        // Selling is a withdrawal path, so round the remaining reserves up.
+        // That rounds collateral_out down and prevents dust extraction loops.
+        let new_r = integer_sqrt_ceil(new_r_squared);
 
         require!(r > new_r, AmmError::NoCollateralToRelease);
 
@@ -274,6 +276,68 @@ mod tests {
     }
 
     #[test]
+    fn selling_yes_releases_collateral_and_moves_quote_back() {
+        let reserves = 100 * USDC;
+        let yes_supply = PythagoreanCurve::initial_balanced_supply(reserves).unwrap();
+        let no_supply = yes_supply;
+        let collateral_in = 10 * USDC;
+
+        let yes_shares =
+            PythagoreanCurve::get_shares_to_mint(reserves, yes_supply, no_supply, collateral_in)
+                .unwrap();
+        let bought_reserves = reserves + collateral_in;
+        let bought_yes_supply = yes_supply + yes_shares;
+        let sell_shares = yes_shares / 2;
+
+        let collateral_out = PythagoreanCurve::get_reserves_to_release(
+            bought_reserves,
+            bought_yes_supply,
+            no_supply,
+            sell_shares,
+        )
+        .unwrap();
+
+        assert!(collateral_out > 0);
+        assert!(collateral_out < collateral_in);
+
+        let new_yes_supply = bought_yes_supply - sell_shares;
+        let new_reserves = bought_reserves - collateral_out;
+        let yes_price =
+            PythagoreanCurve::get_price_bps(new_reserves, new_yes_supply, no_supply).unwrap();
+        let bought_yes_price =
+            PythagoreanCurve::get_price_bps(bought_reserves, bought_yes_supply, no_supply)
+                .unwrap();
+
+        assert!(yes_price < bought_yes_price);
+        PythagoreanCurve::validate_invariant(new_reserves, new_yes_supply, no_supply, 1).unwrap();
+    }
+
+    #[test]
+    fn buy_then_sell_same_shares_does_not_overpay() {
+        let reserves = 100 * USDC;
+        let yes_supply = PythagoreanCurve::initial_balanced_supply(reserves).unwrap();
+        let no_supply = yes_supply;
+
+        for collateral_in in [USDC, 5 * USDC, 10 * USDC, 25 * USDC] {
+            let shares =
+                PythagoreanCurve::get_shares_to_mint(reserves, yes_supply, no_supply, collateral_in)
+                    .unwrap();
+            let collateral_out = PythagoreanCurve::get_reserves_to_release(
+                reserves + collateral_in,
+                yes_supply + shares,
+                no_supply,
+                shares,
+            )
+            .unwrap();
+
+            assert!(
+                collateral_out <= collateral_in,
+                "sell-back should not release more collateral than the matching buy paid"
+            );
+        }
+    }
+
+    #[test]
     fn proportional_payout_never_exceeds_reserves() {
         let reserves = 125 * USDC;
         let winner_a_shares = 25 * USDC;
@@ -319,6 +383,16 @@ fn integer_sqrt(x: u128) -> u128 {
     }
 
     z
+}
+
+/// Integer square root rounded up.
+fn integer_sqrt_ceil(x: u128) -> u128 {
+    let floor = integer_sqrt(x);
+    if floor.checked_mul(floor) == Some(x) {
+        floor
+    } else {
+        floor + 1
+    }
 }
 
 #[error_code]

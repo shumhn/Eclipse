@@ -55,6 +55,20 @@ pub struct PrivatePredictionPlaced {
     pub timestamp: i64,
 }
 
+/// Event emitted when a private prediction is sold back to the AMM.
+///
+/// Like PrivatePredictionPlaced, this intentionally does NOT reveal:
+/// - YES/NO side
+/// - shares burned
+/// - collateral released
+/// - live YES/NO supply
+#[event]
+pub struct PrivatePredictionSold {
+    pub market: Pubkey,
+    pub trader: Pubkey,
+    pub timestamp: i64,
+}
+
 #[event]
 pub struct PrivatePositionTopupConsumedEr {
     pub market: Pubkey,
@@ -510,6 +524,98 @@ impl<'info> PlacePrivatePrediction<'info> {
 
         store_private_position_state(&self.private_position, &private_position)?;
         emit!(PrivatePredictionPlaced {
+            market: self.market.key(),
+            trader: self.trader.key(),
+            timestamp: clock.unix_timestamp,
+        });
+
+        MagicIntentBundleBuilder::new(
+            self.trader.to_account_info(),
+            self.magic_context.to_account_info(),
+            self.magic_program.to_account_info(),
+        )
+        .commit(&[
+            self.market.to_account_info(),
+            self.private_position.to_account_info(),
+        ])
+        .build_and_invoke()?;
+
+        Ok(())
+    }
+
+    pub fn sell_private_prediction(&mut self, shares: u64, sell_yes: bool) -> Result<()> {
+        require!(shares > 0, PrivateStateError::InvalidAmount);
+
+        let clock = Clock::get()?;
+
+        require!(
+            self.market.status == MarketStatus::Active,
+            MarketError::MarketNotActive
+        );
+        require!(
+            clock.unix_timestamp < self.market.end_time as i64,
+            PrivateRollupInstructionError::MarketEnded
+        );
+        let position = load_position_from_account_info_allow_delegated(&self.position)?;
+        require_keys_eq!(
+            position.market,
+            self.market.key(),
+            PositionError::PositionMarketMismatch
+        );
+        require_keys_eq!(
+            position.trader,
+            self.trader.key(),
+            PositionError::UnauthorizedTrader
+        );
+        require!(!position.claimed, PositionError::PositionAlreadyClaimed);
+        require!(!position.settled, PositionError::PositionAlreadySettled);
+
+        let mut private_position = load_private_position_state(&self.private_position)?;
+        private_position.assert_trader(&self.trader.key())?;
+        private_position.assert_market(&self.market.key())?;
+        private_position.assert_not_claimed()?;
+
+        let collateral_out = if sell_yes {
+            PythagoreanCurve::get_reserves_to_release(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+                shares,
+            )?
+        } else {
+            PythagoreanCurve::get_reserves_to_release(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+                shares,
+            )?
+        };
+
+        if sell_yes {
+            private_position.remove_yes_shares(shares)?;
+            self.market.live_yes_supply = self
+                .market
+                .live_yes_supply
+                .checked_sub(shares)
+                .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        } else {
+            private_position.remove_no_shares(shares)?;
+            self.market.live_no_supply = self
+                .market
+                .live_no_supply
+                .checked_sub(shares)
+                .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        }
+
+        private_position.release_collateral(collateral_out)?;
+        self.market.live_reserves = self
+            .market
+            .live_reserves
+            .checked_sub(collateral_out)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+
+        store_private_position_state(&self.private_position, &private_position)?;
+        emit!(PrivatePredictionSold {
             market: self.market.key(),
             trader: self.trader.key(),
             timestamp: clock.unix_timestamp,
