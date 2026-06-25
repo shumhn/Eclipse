@@ -160,6 +160,37 @@ export async function preparePrivateTradeTransaction(
   return json.data;
 }
 
+export async function preparePrivateSellTransaction(
+  params: {
+    marketAddress: string;
+    side: 'yes' | 'no';
+    shares: number;
+    walletAddress: string;
+  },
+  teeToken?: string
+): Promise<PreparedTransaction> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (teeToken) headers.Authorization = `Bearer ${teeToken}`;
+
+  const res = await fetch(`${API_BASE}/api/trading/prepare-sell`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      market: params.marketAddress,
+      side: params.side,
+      shares: params.shares,
+      walletAddress: params.walletAddress,
+    }),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.error || 'Failed to prepare private sell transaction');
+  }
+
+  return json.data;
+}
+
 export async function preparePrivateFundingTransaction(
   params: {
     marketAddress: string;

@@ -739,6 +739,81 @@ export class MagicBlockIndexer {
     };
   }
 
+  async preparePrivateSellTransaction(params: {
+    market: string;
+    side: 'yes' | 'no';
+    shares: number;
+    walletAddress: string;
+    teeToken?: string;
+  }): Promise<{ transaction: Transaction; positionAddress: string }> {
+    const marketPubkey = new PublicKey(params.market);
+    const traderPubkey = new PublicKey(params.walletAddress);
+    const [configPda] = this.getConfigPda();
+    const [positionPda] = this.getPositionPda(marketPubkey, traderPubkey);
+    const [privatePositionPda] = this.getPrivatePositionStatePda(marketPubkey, traderPubkey);
+
+    const market = await this.getMarketInfo(params.market);
+    if (!market) throw new Error('Market not found');
+    if (!market.delegated) throw new Error('Market is not delegated into MagicBlock TEE');
+    this.assertMarketTradeable(market);
+
+    const positionInfo = await this.connection.getAccountInfo(positionPda, 'confirmed');
+    if (!positionInfo) throw new Error('Private position not found. Fund the position first.');
+    if (!positionInfo.owner.equals(DELEGATION_PROGRAM_ID)) {
+      throw new Error('Private position is not delegated into TEE yet');
+    }
+
+    const teeConnection = params.teeToken
+      ? new Connection(`${EPHEMERAL_RPC_URL}?token=${encodeURIComponent(params.teeToken)}`, 'confirmed')
+      : this.ephemeralConnection;
+
+    const privatePositionInfo = await teeConnection.getAccountInfo(
+      privatePositionPda,
+      'confirmed'
+    );
+    if (!privatePositionInfo) {
+      throw new Error('Private position state is not initialized in MagicBlock yet');
+    }
+
+    const privatePosition = this.decodePrivatePositionState(privatePositionInfo.data);
+    const sharesLamports = Math.round(params.shares * 1_000_000);
+    if (!Number.isFinite(sharesLamports) || sharesLamports <= 0) {
+      throw new Error('Enter a valid share amount to sell');
+    }
+
+    const ownedShares = params.side === 'yes'
+      ? asBigInt(privatePosition.yes_shares)
+      : asBigInt(privatePosition.no_shares);
+    if (ownedShares < BigInt(sharesLamports)) {
+      throw new Error(`Insufficient ${params.side.toUpperCase()} shares to sell`);
+    }
+
+    const instructionProgram = this.createInstructionProgram(teeConnection);
+    const tx = new Transaction();
+    const sellIx = await instructionProgram.methods
+      .sellPrivatePrediction(new BN(sharesLamports), params.side === 'yes')
+      .accountsPartial({
+        trader: traderPubkey,
+        config: configPda,
+        market: marketPubkey,
+        position: positionPda,
+        privatePosition: privatePositionPda,
+        magicProgram: MAGIC_PROGRAM_ID,
+        magicContext: MAGIC_CONTEXT_ID,
+      })
+      .instruction();
+    tx.add(sellIx);
+
+    const { blockhash } = await teeConnection.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = traderPubkey;
+
+    return {
+      transaction: tx,
+      positionAddress: positionPda.toBase58(),
+    };
+  }
+
   async preparePrivateFundingTransaction(params: {
     market: string;
     walletAddress: string;
