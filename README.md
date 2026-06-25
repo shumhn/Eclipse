@@ -21,7 +21,7 @@ Eclipse lets users create and trade binary YES/NO markets with a privacy-preserv
 - Support manually resolved YES/NO markets.
 - Seed each market with initial USDC liquidity.
 - Delegate market and position accounts into MagicBlock.
-- Trade through a virtual AMM instead of public YES/NO token mints.
+- Buy and sell through a virtual AMM instead of public YES/NO token mints.
 - Fund a market-specific private position before trading, or use the direct top-up plus trade flow.
 - Keep individual side, shares, and position state inside TEE/PER while the market is active.
 - Keep aggregate AMM odds visible for price discovery.
@@ -79,11 +79,14 @@ no_price  = no_supply  / (yes_supply + no_supply)
 
 When a user buys YES or NO, the program mints virtual shares inside the private position state and updates the aggregate market state. No public YES/NO SPL outcome tokens are minted during active trading.
 
+When a user sells YES or NO, the program burns private virtual shares, releases USDC back into that user's market-private balance, and updates the aggregate AMM state.
+
 One winning virtual share is a claim on the final market reserves. The frontend quote shows:
 
 - average price
 - estimated shares
 - projected payout if the selected side resolves correctly
+- estimated USDC received when selling shares
 
 ---
 
@@ -120,7 +123,7 @@ Wallet-level Shielded USDC and market-specific private position balance are sepa
 
 ### 4. Trade
 
-Users buy YES or NO while the market is active. The trade is submitted to the MagicBlock TEE/PER RPC. The public event intentionally does not reveal side, amount, or per-wallet share data.
+Users buy or sell YES/NO while the market is active. Trades are submitted to the MagicBlock TEE/PER RPC. Public trade events intentionally do not reveal side, amount, or per-wallet share data.
 
 ### 5. Resolve
 
@@ -221,6 +224,7 @@ The Anchor program exposes the full lifecycle:
 - `initialize_private_market_state` - initialize delegated AMM state.
 - `initialize_private_position_state` - initialize delegated private trader state.
 - `place_private_prediction` - place a private YES/NO trade from available private balance.
+- `sell_private_prediction` - sell private YES/NO shares back to the AMM.
 - `consume_position_topup_receipt_er` - consume a delegated top-up receipt into private balance.
 - `consume_topup_and_place_private_prediction_er` - top up and trade through the private path.
 - `resolve_private_market_er` - resolve a manual market inside the ER.
@@ -261,6 +265,7 @@ Main API groups:
 - `/api/trading/prepare-position` - open/fund a position shell or create a top-up receipt.
 - `/api/trading/prepare-funds` - consume private funding/top-up inside the TEE path.
 - `/api/trading/prepare-private` - prepare a private YES/NO trade for the Ephemeral RPC.
+- `/api/trading/prepare-sell` - prepare a private YES/NO share sale for the Ephemeral RPC.
 - `/api/trading/prepare-settle` - prepare private settlement after resolution.
 - `/api/trading/prepare-claim` - prepare the final Solana claim transaction.
 - `/api/trading/commit-position` - commit position state back to Solana.
