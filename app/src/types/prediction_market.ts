@@ -4310,6 +4310,171 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "sellPrivatePrediction",
+      "docs": [
+        "Sell private YES/NO shares back to the AMM inside MagicBlock / PER.",
+        "",
+        "The released collateral goes back into the trader's market-private",
+        "balance and can be reused for another trade or settled after resolution."
+      ],
+      "discriminator": [
+        218,
+        34,
+        5,
+        174,
+        210,
+        59,
+        110,
+        211
+      ],
+      "accounts": [
+        {
+          "name": "trader",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Delegated public position shell used only for validation. Live hidden",
+            "exposure lives in the private position account."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "privatePosition",
+          "docs": [
+            "Loaded/stored manually by handler."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  118,
+                  97,
+                  116,
+                  101,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "trader"
+              }
+            ]
+          }
+        },
+        {
+          "name": "magicProgram",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magicContext",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u64"
+        },
+        {
+          "name": "sellYes",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "setProtocolPaused",
       "docs": [
         "Pause or unpause protocol-level actions."
@@ -5412,6 +5577,19 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "privatePredictionSold",
+      "discriminator": [
+        210,
+        126,
+        24,
+        148,
+        76,
+        131,
+        105,
+        102
+      ]
+    },
+    {
       "name": "protocolInitialized",
       "discriminator": [
         173,
@@ -5467,81 +5645,56 @@ export type PredictionMarket = {
   "errors": [
     {
       "code": 6000,
-      "name": "privateMarketNotActive",
-      "msg": "Private market is not active"
+      "name": "unauthorizedTrader",
+      "msg": "Unauthorized trader"
     },
     {
       "code": 6001,
-      "name": "privateMarketNotEnded",
-      "msg": "Private market has not ended yet"
+      "name": "positionMarketMismatch",
+      "msg": "Position does not belong to this market"
     },
     {
       "code": 6002,
-      "name": "privateMarketNotResolved",
-      "msg": "Private market is not resolved"
+      "name": "positionAlreadyClaimed",
+      "msg": "Position already claimed"
     },
     {
       "code": 6003,
-      "name": "privateMarketCancelled",
-      "msg": "Private market has been cancelled"
+      "name": "positionAlreadySettled",
+      "msg": "Position is already settled"
     },
     {
       "code": 6004,
-      "name": "privateMarketStateNotInitialized",
-      "msg": "Private market state is not initialized"
+      "name": "positionNotSettled",
+      "msg": "Position is not settled"
     },
     {
       "code": 6005,
-      "name": "privatePositionStateNotInitialized",
-      "msg": "Private position state is not initialized"
+      "name": "positionAlreadyDelegated",
+      "msg": "Position already delegated"
     },
     {
       "code": 6006,
-      "name": "privatePositionTraderMismatch",
-      "msg": "Private position belongs to a different trader"
+      "name": "positionNotDelegated",
+      "msg": "Position is not delegated"
     },
     {
       "code": 6007,
-      "name": "privatePositionMarketMismatch",
-      "msg": "Private position belongs to a different market"
-    },
-    {
-      "code": 6008,
-      "name": "privatePositionAlreadyClaimed",
-      "msg": "Private position already claimed"
-    },
-    {
-      "code": 6009,
-      "name": "invalidPrivateMarketStatus",
-      "msg": "Invalid private market status"
-    },
-    {
-      "code": 6010,
-      "name": "invalidPrivateOutcome",
-      "msg": "Invalid private market outcome"
-    },
-    {
-      "code": 6011,
       "name": "invalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6012,
-      "name": "insufficientPrivateCollateral",
-      "msg": "Insufficient private collateral"
+      "code": 6008,
+      "name": "insufficientCollateral",
+      "msg": "Insufficient collateral"
     },
     {
-      "code": 6013,
-      "name": "insufficientPrivateShares",
-      "msg": "Insufficient private shares"
+      "code": 6009,
+      "name": "claimAmountTooHigh",
+      "msg": "Claim amount is greater than claimable amount"
     },
     {
-      "code": 6014,
-      "name": "winningSupplyIsZero",
-      "msg": "Winning supply is zero"
-    },
-    {
-      "code": 6015,
+      "code": 6010,
       "name": "arithmeticOverflow",
       "msg": "Arithmetic overflow"
     }
@@ -6659,6 +6812,35 @@ export type PredictionMarket = {
         "- live NO supply",
         "",
         "The actual position remains inside MagicBlock / PER private state."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "trader",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "privatePredictionSold",
+      "docs": [
+        "Event emitted when a private prediction is sold back to the AMM.",
+        "",
+        "Like PrivatePredictionPlaced, this intentionally does NOT reveal:",
+        "- YES/NO side",
+        "- shares burned",
+        "- collateral released",
+        "- live YES/NO supply"
       ],
       "type": {
         "kind": "struct",
