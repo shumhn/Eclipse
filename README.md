@@ -31,6 +31,27 @@ This is a devnet build, not a production deployment.
 
 ---
 
+## Demo Pitch
+
+Eclipse is built around one simple idea: prediction markets need public price
+discovery, but they do not need to expose every trader's live position.
+
+The demo shows:
+
+- instant YES/NO trading through a private virtual AMM
+- market odds that stay public and refresh as aggregate state changes
+- user side, shares, and private balance kept inside MagicBlock TEE/PER state
+- oracle-style crypto price markets that can resolve after the deadline
+- final settlement and claim flow back through the Solana collateral vault
+
+In one line:
+
+```text
+Public market odds, private trader positions.
+```
+
+---
+
 ## Privacy Model
 
 The short version:
