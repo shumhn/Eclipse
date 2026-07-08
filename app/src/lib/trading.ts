@@ -16,6 +16,7 @@ export interface TradeParams {
   walletAddress: string;
   topupReceiptAddress?: string;
   topupNonce?: string;
+  slippageBps?: number;
 }
 
 export interface PreparedTransaction {
@@ -149,6 +150,7 @@ export async function preparePrivateTradeTransaction(
       walletAddress: params.walletAddress,
       topupReceiptAddress: params.topupReceiptAddress,
       topupNonce: params.topupNonce,
+      slippageBps: params.slippageBps,
     }),
   });
 
@@ -166,6 +168,7 @@ export async function preparePrivateSellTransaction(
     side: 'yes' | 'no';
     shares: number;
     walletAddress: string;
+    slippageBps?: number;
   },
   teeToken?: string
 ): Promise<PreparedTransaction> {
@@ -180,6 +183,7 @@ export async function preparePrivateSellTransaction(
       side: params.side,
       shares: params.shares,
       walletAddress: params.walletAddress,
+      slippageBps: params.slippageBps,
     }),
   });
 

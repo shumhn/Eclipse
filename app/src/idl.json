@@ -1007,6 +1007,10 @@
         {
           "name": "predict_yes",
           "type": "bool"
+        },
+        {
+          "name": "min_shares_out",
+          "type": "u64"
         }
       ]
     },
@@ -3979,6 +3983,10 @@
         {
           "name": "predict_yes",
           "type": "bool"
+        },
+        {
+          "name": "min_shares_out",
+          "type": "u64"
         }
       ]
     },
@@ -4465,6 +4473,10 @@
         {
           "name": "sell_yes",
           "type": "bool"
+        },
+        {
+          "name": "min_collateral_out",
+          "type": "u64"
         }
       ]
     },
@@ -5639,56 +5651,81 @@
   "errors": [
     {
       "code": 6000,
-      "name": "UnauthorizedTrader",
-      "msg": "Unauthorized trader"
+      "name": "PrivateMarketNotActive",
+      "msg": "Private market is not active"
     },
     {
       "code": 6001,
-      "name": "PositionMarketMismatch",
-      "msg": "Position does not belong to this market"
+      "name": "PrivateMarketNotEnded",
+      "msg": "Private market has not ended yet"
     },
     {
       "code": 6002,
-      "name": "PositionAlreadyClaimed",
-      "msg": "Position already claimed"
+      "name": "PrivateMarketNotResolved",
+      "msg": "Private market is not resolved"
     },
     {
       "code": 6003,
-      "name": "PositionAlreadySettled",
-      "msg": "Position is already settled"
+      "name": "PrivateMarketCancelled",
+      "msg": "Private market has been cancelled"
     },
     {
       "code": 6004,
-      "name": "PositionNotSettled",
-      "msg": "Position is not settled"
+      "name": "PrivateMarketStateNotInitialized",
+      "msg": "Private market state is not initialized"
     },
     {
       "code": 6005,
-      "name": "PositionAlreadyDelegated",
-      "msg": "Position already delegated"
+      "name": "PrivatePositionStateNotInitialized",
+      "msg": "Private position state is not initialized"
     },
     {
       "code": 6006,
-      "name": "PositionNotDelegated",
-      "msg": "Position is not delegated"
+      "name": "PrivatePositionTraderMismatch",
+      "msg": "Private position belongs to a different trader"
     },
     {
       "code": 6007,
+      "name": "PrivatePositionMarketMismatch",
+      "msg": "Private position belongs to a different market"
+    },
+    {
+      "code": 6008,
+      "name": "PrivatePositionAlreadyClaimed",
+      "msg": "Private position already claimed"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidPrivateMarketStatus",
+      "msg": "Invalid private market status"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidPrivateOutcome",
+      "msg": "Invalid private market outcome"
+    },
+    {
+      "code": 6011,
       "name": "InvalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6008,
-      "name": "InsufficientCollateral",
-      "msg": "Insufficient collateral"
+      "code": 6012,
+      "name": "InsufficientPrivateCollateral",
+      "msg": "Insufficient private collateral"
     },
     {
-      "code": 6009,
-      "name": "ClaimAmountTooHigh",
-      "msg": "Claim amount is greater than claimable amount"
+      "code": 6013,
+      "name": "InsufficientPrivateShares",
+      "msg": "Insufficient private shares"
     },
     {
-      "code": 6010,
+      "code": 6014,
+      "name": "WinningSupplyIsZero",
+      "msg": "Winning supply is zero"
+    },
+    {
+      "code": 6015,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     }

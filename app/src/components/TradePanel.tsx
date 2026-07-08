@@ -447,7 +447,11 @@ export default function TradePanel({
   const estimatedShares = (tradeType === 'sell' ? inputAmount : quotedShares).toFixed(2);
   const potentialReturn = (tradeType === 'sell' ? sellQuote.collateralOut : quotedPayout).toFixed(2);
   const returnPct = amountUsdc > 0 ? ((quotedPayout / amountUsdc - 1) * 100).toFixed(2) : '0.00';
-  const averagePrice = tradeType === 'sell' ? sellQuote.averagePrice : currentPrice;
+  const averagePrice = tradeType === 'sell'
+    ? sellQuote.averagePrice
+    : quotedShares > 0
+      ? amountUsdc / quotedShares
+      : 0;
 
   if (!tradingEnabled) {
     return (
@@ -519,6 +523,10 @@ export default function TradePanel({
         {(tradeType === 'buy' || tradeType === 'sell') && (
           <>
             {/* Outcome Selector */}
+            <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-widest text-white/45">
+              <span>Market odds</span>
+              <span>Execution estimated below</span>
+            </div>
             <div className="flex gap-3 mb-4">
               <button
                 onClick={() => setSide('yes')}
@@ -617,7 +625,7 @@ export default function TradePanel({
             {/* Estimate Details */}
             <div className="space-y-2.5 mb-4">
               <div className="flex justify-between text-[13px]">
-                <span className="text-white">Avg price</span>
+                <span className="text-white">{tradeType === 'sell' ? 'Avg sell price' : 'Avg cost'}</span>
                 <span className="text-white font-medium tabular-nums">{(averagePrice * 100).toFixed(1)}¢</span>
               </div>
               <div className="h-px bg-white/[0.04]" />

@@ -986,7 +986,7 @@ describe('prediction_market L1 smoke', () => {
 
   it('places a hidden YES prediction inside the ephemeral rollup', async () => {
     const ix = await ephemeralProgram.methods
-      .placePrivatePrediction(new anchor.BN(100_000), true)
+      .placePrivatePrediction(new anchor.BN(100_000), true, new anchor.BN(0))
       .accountsPartial({
         trader: trader.publicKey,
         config: configPda,

@@ -467,8 +467,10 @@ pub mod prediction_market {
         ctx: Context<PlacePrivatePrediction>,
         amount: u64,
         predict_yes: bool,
+        min_shares_out: u64,
     ) -> Result<()> {
-        ctx.accounts.place_private_prediction(amount, predict_yes)
+        ctx.accounts
+            .place_private_prediction(amount, predict_yes, min_shares_out)
     }
 
     /// Sell private YES/NO shares back to the AMM inside MagicBlock / PER.
@@ -479,8 +481,10 @@ pub mod prediction_market {
         ctx: Context<PlacePrivatePrediction>,
         shares: u64,
         sell_yes: bool,
+        min_collateral_out: u64,
     ) -> Result<()> {
-        ctx.accounts.sell_private_prediction(shares, sell_yes)
+        ctx.accounts
+            .sell_private_prediction(shares, sell_yes, min_collateral_out)
     }
 
     /// Consume a delegated funded top-up receipt inside PER.
@@ -501,9 +505,13 @@ pub mod prediction_market {
         ctx: Context<ConsumeTopupAndPlacePrivatePredictionEr>,
         amount: u64,
         predict_yes: bool,
+        min_shares_out: u64,
     ) -> Result<()> {
-        ctx.accounts
-            .consume_topup_and_place_private_prediction_er(amount, predict_yes)
+        ctx.accounts.consume_topup_and_place_private_prediction_er(
+            amount,
+            predict_yes,
+            min_shares_out,
+        )
     }
 
     /// Resolve private market inside MagicBlock / PER.

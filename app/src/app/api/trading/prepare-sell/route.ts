@@ -7,12 +7,13 @@ const prepareSellSchema = z.object({
   side: z.enum(['yes', 'no']),
   shares: z.number().positive(),
   walletAddress: z.string(),
+  slippageBps: z.number().int().min(0).max(10_000).optional(),
 });
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { market, side, shares, walletAddress } = prepareSellSchema.parse(body);
+    const { market, side, shares, walletAddress, slippageBps } = prepareSellSchema.parse(body);
 
     const authHeader = req.headers.get('authorization') || '';
     const teeToken = authHeader.toLowerCase().startsWith('bearer ')
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
       shares,
       walletAddress,
       teeToken,
+      slippageBps,
     });
 
     return NextResponse.json({

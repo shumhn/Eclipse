@@ -54,6 +54,8 @@ const PYTH_BENCHMARKS_URL = 'https://benchmarks.pyth.network';
 const ER_SPONSOR_BUFFER_LAMPORTS = 100_000;
 const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 256);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
+const DEFAULT_SLIPPAGE_BPS = 100;
+const BPS_DENOMINATOR = BigInt(10_000);
 const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEntries(
   Object.entries(PRICE_FEED_BY_SYMBOL).map(([symbol, feed]) => [
     symbol,
@@ -136,6 +138,86 @@ const ConfigLayout = borsh.struct([
 ]);
 
 type LayoutDecoded = Record<string, any>;
+
+function parseHexU64(value: string): bigint {
+  return BigInt(`0x${value || '0'}`);
+}
+
+function integerSqrt(value: bigint): bigint {
+  if (value < BigInt(0)) throw new Error('Cannot square-root a negative value');
+  if (value < BigInt(2)) return value;
+
+  let x0 = value;
+  let x1 = (x0 + value / x0) / BigInt(2);
+  while (x1 < x0) {
+    x0 = x1;
+    x1 = (x0 + value / x0) / BigInt(2);
+  }
+  return x0;
+}
+
+function integerSqrtCeil(value: bigint): bigint {
+  const floor = integerSqrt(value);
+  return floor * floor === value ? floor : floor + BigInt(1);
+}
+
+function applySlippageFloor(amount: bigint, slippageBps = DEFAULT_SLIPPAGE_BPS): bigint {
+  const bps = BigInt(Math.max(0, Math.min(10_000, Math.floor(slippageBps))));
+  return (amount * (BPS_DENOMINATOR - bps)) / BPS_DENOMINATOR;
+}
+
+function quoteBuySharesLamports(
+  market: NormalizedMarket,
+  side: 'yes' | 'no',
+  amountLamports: bigint
+): bigint {
+  const reserves = parseHexU64(market.account.market_reserves);
+  const yesSupply = parseHexU64(market.account.yes_token_supply_minted);
+  const noSupply = parseHexU64(market.account.no_token_supply_minted);
+  if (
+    amountLamports <= BigInt(0) ||
+    reserves <= BigInt(0) ||
+    yesSupply <= BigInt(0) ||
+    noSupply <= BigInt(0)
+  ) {
+    return BigInt(0);
+  }
+
+  const target = side === 'yes' ? yesSupply : noSupply;
+  const other = side === 'yes' ? noSupply : yesSupply;
+  const newReserves = reserves + amountLamports;
+  const newTargetSquared = newReserves * newReserves - other * other;
+  if (newTargetSquared <= BigInt(0)) return BigInt(0);
+
+  const newTarget = integerSqrt(newTargetSquared);
+  return newTarget > target ? newTarget - target : BigInt(0);
+}
+
+function quoteSellCollateralLamports(
+  market: NormalizedMarket,
+  side: 'yes' | 'no',
+  sharesLamports: bigint
+): bigint {
+  const reserves = parseHexU64(market.account.market_reserves);
+  const yesSupply = parseHexU64(market.account.yes_token_supply_minted);
+  const noSupply = parseHexU64(market.account.no_token_supply_minted);
+  if (
+    sharesLamports <= BigInt(0) ||
+    reserves <= BigInt(0) ||
+    yesSupply <= BigInt(0) ||
+    noSupply <= BigInt(0)
+  ) {
+    return BigInt(0);
+  }
+
+  const target = side === 'yes' ? yesSupply : noSupply;
+  const other = side === 'yes' ? noSupply : yesSupply;
+  if (sharesLamports > target) return BigInt(0);
+
+  const newTarget = target - sharesLamports;
+  const newReserves = integerSqrtCeil(newTarget * newTarget + other * other);
+  return reserves > newReserves ? reserves - newReserves : BigInt(0);
+}
 
 export interface ProtocolConfigState {
   address: string;
@@ -632,6 +714,7 @@ export class MagicBlockIndexer {
     teeToken?: string;
     topupReceiptAddress?: string;
     topupNonce?: string;
+    slippageBps?: number;
   }): Promise<{ transaction: Transaction; positionAddress: string }> {
     const marketPubkey = new PublicKey(params.market);
     const traderPubkey = new PublicKey(params.walletAddress);
@@ -678,8 +761,19 @@ export class MagicBlockIndexer {
       throw new Error('Insufficient delegated collateral available for private trade');
     }
 
+    const quotedShares = quoteBuySharesLamports(
+      market,
+      params.side,
+      BigInt(amountLamports)
+    );
+    if (quotedShares <= BigInt(0)) {
+      throw new Error('Trade amount is too small for the current AMM liquidity');
+    }
+    const minSharesOut = applySlippageFloor(quotedShares, params.slippageBps);
+
     const instructionProgram = this.createInstructionProgram(teeConnection);
     const amount = new BN(amountLamports);
+    const minimumSharesOut = new BN(minSharesOut.toString());
     const tx = new Transaction();
 
     if (!privatePositionInfo) {
@@ -700,7 +794,11 @@ export class MagicBlockIndexer {
 
     if (params.topupReceiptAddress) {
       const consumeAndBuyIx = await instructionProgram.methods
-        .consumeTopupAndPlacePrivatePredictionEr(amount, params.side === 'yes')
+        .consumeTopupAndPlacePrivatePredictionEr(
+          amount,
+          params.side === 'yes',
+          minimumSharesOut
+        )
         .accountsPartial({
           trader: traderPubkey,
           config: configPda,
@@ -715,7 +813,7 @@ export class MagicBlockIndexer {
       tx.add(consumeAndBuyIx);
     } else {
       const buyIx = await instructionProgram.methods
-        .placePrivatePrediction(amount, params.side === 'yes')
+        .placePrivatePrediction(amount, params.side === 'yes', minimumSharesOut)
         .accountsPartial({
           trader: traderPubkey,
           config: configPda,
@@ -745,6 +843,7 @@ export class MagicBlockIndexer {
     shares: number;
     walletAddress: string;
     teeToken?: string;
+    slippageBps?: number;
   }): Promise<{ transaction: Transaction; positionAddress: string }> {
     const marketPubkey = new PublicKey(params.market);
     const traderPubkey = new PublicKey(params.walletAddress);
@@ -788,10 +887,24 @@ export class MagicBlockIndexer {
       throw new Error(`Insufficient ${params.side.toUpperCase()} shares to sell`);
     }
 
+    const quotedCollateralOut = quoteSellCollateralLamports(
+      market,
+      params.side,
+      BigInt(sharesLamports)
+    );
+    if (quotedCollateralOut <= BigInt(0)) {
+      throw new Error('Share amount is too small for the current AMM liquidity');
+    }
+    const minCollateralOut = applySlippageFloor(quotedCollateralOut, params.slippageBps);
+
     const instructionProgram = this.createInstructionProgram(teeConnection);
     const tx = new Transaction();
     const sellIx = await instructionProgram.methods
-      .sellPrivatePrediction(new BN(sharesLamports), params.side === 'yes')
+      .sellPrivatePrediction(
+        new BN(sharesLamports),
+        params.side === 'yes',
+        new BN(minCollateralOut.toString())
+      )
       .accountsPartial({
         trader: traderPubkey,
         config: configPda,

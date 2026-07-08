@@ -450,7 +450,12 @@ pub struct PlacePrivatePrediction<'info> {
 }
 
 impl<'info> PlacePrivatePrediction<'info> {
-    pub fn place_private_prediction(&mut self, amount: u64, predict_yes: bool) -> Result<()> {
+    pub fn place_private_prediction(
+        &mut self,
+        amount: u64,
+        predict_yes: bool,
+        min_shares_out: u64,
+    ) -> Result<()> {
         require!(amount > 0, PrivateStateError::InvalidAmount);
 
         let clock = Clock::get()?;
@@ -497,6 +502,10 @@ impl<'info> PlacePrivatePrediction<'info> {
                 amount,
             )?
         };
+        require!(
+            shares_to_mint >= min_shares_out,
+            PrivateRollupInstructionError::SlippageExceeded
+        );
 
         private_position.spend_collateral(amount)?;
 
@@ -543,7 +552,12 @@ impl<'info> PlacePrivatePrediction<'info> {
         Ok(())
     }
 
-    pub fn sell_private_prediction(&mut self, shares: u64, sell_yes: bool) -> Result<()> {
+    pub fn sell_private_prediction(
+        &mut self,
+        shares: u64,
+        sell_yes: bool,
+        min_collateral_out: u64,
+    ) -> Result<()> {
         require!(shares > 0, PrivateStateError::InvalidAmount);
 
         let clock = Clock::get()?;
@@ -590,6 +604,10 @@ impl<'info> PlacePrivatePrediction<'info> {
                 shares,
             )?
         };
+        require!(
+            collateral_out >= min_collateral_out,
+            PrivateRollupInstructionError::SlippageExceeded
+        );
 
         if sell_yes {
             private_position.remove_yes_shares(shares)?;
@@ -821,6 +839,7 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
         &mut self,
         amount: u64,
         predict_yes: bool,
+        min_shares_out: u64,
     ) -> Result<()> {
         require!(amount > 0, PrivateStateError::InvalidAmount);
 
@@ -868,6 +887,10 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
                 amount,
             )?
         };
+        require!(
+            shares_to_mint >= min_shares_out,
+            PrivateRollupInstructionError::SlippageExceeded
+        );
 
         private_position.spend_collateral(amount)?;
 

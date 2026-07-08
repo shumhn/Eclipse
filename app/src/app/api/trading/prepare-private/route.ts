@@ -9,12 +9,13 @@ const prepareTradeSchema = z.object({
   walletAddress: z.string(),
   topupReceiptAddress: z.string().optional(),
   topupNonce: z.string().optional(),
+  slippageBps: z.number().int().min(0).max(10_000).optional(),
 });
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { market, side, amountUsdc, walletAddress, topupReceiptAddress, topupNonce } =
+    const { market, side, amountUsdc, walletAddress, topupReceiptAddress, topupNonce, slippageBps } =
       prepareTradeSchema.parse(body);
 
     const authHeader = req.headers.get('authorization') || '';
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
       teeToken,
       topupReceiptAddress,
       topupNonce,
+      slippageBps,
     });
 
     return NextResponse.json({
