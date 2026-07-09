@@ -251,6 +251,217 @@ export type PredictionMarket = {
       "returns": "u64"
     },
     {
+      "name": "closeMarketDust",
+      "docs": [
+        "Close a resolved market once only tiny vault dust remains.",
+        "",
+        "This is a conservative cleanup path for rounding dust, not a general",
+        "sweep of unclaimed user funds."
+      ],
+      "discriminator": [
+        41,
+        162,
+        34,
+        149,
+        118,
+        225,
+        79,
+        221
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Market creator or protocol admin closing residual dust."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market shell."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateralMint",
+          "docs": [
+            "Protocol collateral mint."
+          ]
+        },
+        {
+          "name": "dustDestination",
+          "docs": [
+            "Destination for the tiny residual dust."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "authority"
+              },
+              {
+                "kind": "account",
+                "path": "tokenProgram"
+              },
+              {
+                "kind": "account",
+                "path": "collateralMint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Market vault."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "tokenProgram"
+              },
+              {
+                "kind": "account",
+                "path": "collateralMint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "tokenProgram",
+          "docs": [
+            "Token program."
+          ]
+        }
+      ],
+      "args": [],
+      "returns": "u64"
+    },
+    {
       "name": "commitAndUndelegate",
       "docs": [
         "Commit and undelegate market shell back to Solana L1.",
@@ -5407,6 +5618,19 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "marketDustClosed",
+      "discriminator": [
+        175,
+        11,
+        189,
+        233,
+        160,
+        32,
+        8,
+        109
+      ]
+    },
+    {
       "name": "oracleUpdated",
       "discriminator": [
         138,
@@ -5657,83 +5881,23 @@ export type PredictionMarket = {
   "errors": [
     {
       "code": 6000,
-      "name": "privateMarketNotActive",
-      "msg": "Private market is not active"
+      "name": "topupReceiptAlreadyConsumed",
+      "msg": "Top-up receipt has already been consumed"
     },
     {
       "code": 6001,
-      "name": "privateMarketNotEnded",
-      "msg": "Private market has not ended yet"
+      "name": "topupReceiptMarketMismatch",
+      "msg": "Top-up receipt belongs to a different market"
     },
     {
       "code": 6002,
-      "name": "privateMarketNotResolved",
-      "msg": "Private market is not resolved"
+      "name": "topupReceiptTraderMismatch",
+      "msg": "Top-up receipt belongs to a different trader"
     },
     {
       "code": 6003,
-      "name": "privateMarketCancelled",
-      "msg": "Private market has been cancelled"
-    },
-    {
-      "code": 6004,
-      "name": "privateMarketStateNotInitialized",
-      "msg": "Private market state is not initialized"
-    },
-    {
-      "code": 6005,
-      "name": "privatePositionStateNotInitialized",
-      "msg": "Private position state is not initialized"
-    },
-    {
-      "code": 6006,
-      "name": "privatePositionTraderMismatch",
-      "msg": "Private position belongs to a different trader"
-    },
-    {
-      "code": 6007,
-      "name": "privatePositionMarketMismatch",
-      "msg": "Private position belongs to a different market"
-    },
-    {
-      "code": 6008,
-      "name": "privatePositionAlreadyClaimed",
-      "msg": "Private position already claimed"
-    },
-    {
-      "code": 6009,
-      "name": "invalidPrivateMarketStatus",
-      "msg": "Invalid private market status"
-    },
-    {
-      "code": 6010,
-      "name": "invalidPrivateOutcome",
-      "msg": "Invalid private market outcome"
-    },
-    {
-      "code": 6011,
-      "name": "invalidAmount",
-      "msg": "Invalid amount"
-    },
-    {
-      "code": 6012,
-      "name": "insufficientPrivateCollateral",
-      "msg": "Insufficient private collateral"
-    },
-    {
-      "code": 6013,
-      "name": "insufficientPrivateShares",
-      "msg": "Insufficient private shares"
-    },
-    {
-      "code": 6014,
-      "name": "winningSupplyIsZero",
-      "msg": "Winning supply is zero"
-    },
-    {
-      "code": 6015,
-      "name": "arithmeticOverflow",
-      "msg": "Arithmetic overflow"
+      "name": "invalidTopupReceiptAmount",
+      "msg": "Top-up receipt amount is invalid"
     }
   ],
   "types": [
@@ -6192,6 +6356,33 @@ export type PredictionMarket = {
           {
             "name": "teeValidator",
             "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "marketDustClosed",
+      "docs": [
+        "Event emitted when a resolved market is closed and tiny residual vault dust is swept."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           },
           {
             "name": "timestamp",

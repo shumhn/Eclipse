@@ -305,8 +305,7 @@ mod tests {
         let yes_price =
             PythagoreanCurve::get_price_bps(new_reserves, new_yes_supply, no_supply).unwrap();
         let bought_yes_price =
-            PythagoreanCurve::get_price_bps(bought_reserves, bought_yes_supply, no_supply)
-                .unwrap();
+            PythagoreanCurve::get_price_bps(bought_reserves, bought_yes_supply, no_supply).unwrap();
 
         assert!(yes_price < bought_yes_price);
         PythagoreanCurve::validate_invariant(new_reserves, new_yes_supply, no_supply, 1).unwrap();
@@ -319,9 +318,13 @@ mod tests {
         let no_supply = yes_supply;
 
         for collateral_in in [USDC, 5 * USDC, 10 * USDC, 25 * USDC] {
-            let shares =
-                PythagoreanCurve::get_shares_to_mint(reserves, yes_supply, no_supply, collateral_in)
-                    .unwrap();
+            let shares = PythagoreanCurve::get_shares_to_mint(
+                reserves,
+                yes_supply,
+                no_supply,
+                collateral_in,
+            )
+            .unwrap();
             let collateral_out = PythagoreanCurve::get_reserves_to_release(
                 reserves + collateral_in,
                 yes_supply + shares,
@@ -354,6 +357,108 @@ mod tests {
         assert!(payout_a + payout_b <= reserves);
         assert_eq!(payout_a, 31_250_000);
         assert_eq!(payout_b, 93_750_000);
+    }
+
+    #[test]
+    fn creator_liquidity_covers_one_sided_markets() {
+        let initial_reserves = USDC;
+        let creator_yes = PythagoreanCurve::initial_balanced_supply(initial_reserves).unwrap();
+        let creator_no = creator_yes;
+
+        let alice_yes =
+            PythagoreanCurve::get_shares_to_mint(initial_reserves, creator_yes, creator_no, USDC)
+                .unwrap();
+        let reserves_after_alice = initial_reserves + USDC;
+        let yes_after_alice = creator_yes + alice_yes;
+
+        let bob_yes = PythagoreanCurve::get_shares_to_mint(
+            reserves_after_alice,
+            yes_after_alice,
+            creator_no,
+            USDC,
+        )
+        .unwrap();
+        let final_reserves = reserves_after_alice + USDC;
+        let final_yes_supply = yes_after_alice + bob_yes;
+
+        let creator_payout_if_yes =
+            PythagoreanCurve::proportional_payout(creator_yes, final_yes_supply, final_reserves)
+                .unwrap();
+        let alice_payout =
+            PythagoreanCurve::proportional_payout(alice_yes, final_yes_supply, final_reserves)
+                .unwrap();
+        let bob_payout =
+            PythagoreanCurve::proportional_payout(bob_yes, final_yes_supply, final_reserves)
+                .unwrap();
+
+        assert!(creator_payout_if_yes > 0);
+        assert!(alice_payout > USDC);
+        assert!(bob_payout > USDC);
+        assert!(creator_payout_if_yes + alice_payout + bob_payout <= final_reserves);
+
+        let creator_payout_if_no =
+            PythagoreanCurve::proportional_payout(creator_no, creator_no, final_reserves).unwrap();
+
+        assert_eq!(creator_payout_if_no, final_reserves);
+    }
+
+    #[test]
+    fn sell_idle_plus_winning_payout_does_not_exceed_vault() {
+        let initial_reserves = 10 * USDC;
+        let creator_yes = PythagoreanCurve::initial_balanced_supply(initial_reserves).unwrap();
+        let creator_no = creator_yes;
+
+        let alice_yes = PythagoreanCurve::get_shares_to_mint(
+            initial_reserves,
+            creator_yes,
+            creator_no,
+            5 * USDC,
+        )
+        .unwrap();
+        let reserves_after_buy = initial_reserves + 5 * USDC;
+        let yes_after_buy = creator_yes + alice_yes;
+
+        let sell_shares = alice_yes / 2;
+        let alice_idle = PythagoreanCurve::get_reserves_to_release(
+            reserves_after_buy,
+            yes_after_buy,
+            creator_no,
+            sell_shares,
+        )
+        .unwrap();
+        let final_reserves = reserves_after_buy - alice_idle;
+        let final_yes_supply = yes_after_buy - sell_shares;
+        let alice_remaining_yes = alice_yes - sell_shares;
+
+        let bob_no = PythagoreanCurve::get_shares_to_mint(
+            final_reserves,
+            creator_no,
+            final_yes_supply,
+            3 * USDC,
+        )
+        .unwrap();
+        let final_reserves = final_reserves + 3 * USDC;
+        let final_no_supply = creator_no + bob_no;
+        let vault_balance = initial_reserves + 5 * USDC + 3 * USDC;
+
+        let creator_yes_payout =
+            PythagoreanCurve::proportional_payout(creator_yes, final_yes_supply, final_reserves)
+                .unwrap();
+        let alice_yes_payout = PythagoreanCurve::proportional_payout(
+            alice_remaining_yes,
+            final_yes_supply,
+            final_reserves,
+        )
+        .unwrap()
+            + alice_idle;
+        assert!(creator_yes_payout + alice_yes_payout <= vault_balance);
+
+        let creator_no_payout =
+            PythagoreanCurve::proportional_payout(creator_no, final_no_supply, final_reserves)
+                .unwrap();
+        let bob_no_payout =
+            PythagoreanCurve::proportional_payout(bob_no, final_no_supply, final_reserves).unwrap();
+        assert!(creator_no_payout + bob_no_payout + alice_idle <= vault_balance);
     }
 }
 

@@ -9,6 +9,9 @@ use crate::state::{
     PrivatePositionState, TraderPosition, PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
+const MAX_DUST_SWEEP_AMOUNT: u64 = 1_000;
+const DUST_SWEEP_DELAY_SECONDS: i64 = 60;
+
 /// Event emitted when a trader opens a position shell.
 #[event]
 pub struct PositionOpened {
@@ -54,6 +57,15 @@ pub struct SettledPositionClaimed {
     pub market: Pubkey,
     pub trader: Pubkey,
     pub position: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+}
+
+/// Event emitted when a resolved market is closed and tiny residual vault dust is swept.
+#[event]
+pub struct MarketDustClosed {
+    pub market: Pubkey,
+    pub authority: Pubkey,
     pub amount: u64,
     pub timestamp: i64,
 }
@@ -749,6 +761,122 @@ impl<'info> ClaimSettledPrivatePosition<'info> {
     }
 }
 
+/// Close a resolved market after all meaningful payouts have been claimed.
+///
+/// This is intentionally conservative: it can only sweep a tiny residual token
+/// balance caused by integer rounding. If real claimable collateral remains in
+/// the vault, this instruction fails.
+#[derive(Accounts)]
+pub struct CloseMarketDust<'info> {
+    /// Market creator or protocol admin closing residual dust.
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// Market shell.
+    #[account(
+        mut,
+        seeds = [Market::SEED, market.id.to_le_bytes().as_ref()],
+        bump = market.bump,
+        constraint = market.collateral_mint == config.collateral_mint,
+        constraint = market.collateral_mint == collateral_mint.key(),
+    )]
+    pub market: Account<'info, Market>,
+
+    /// Protocol collateral mint.
+    #[account(
+        constraint = collateral_mint.key() == config.collateral_mint,
+    )]
+    pub collateral_mint: InterfaceAccount<'info, Mint>,
+
+    /// Destination for the tiny residual dust.
+    #[account(
+        mut,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = authority,
+        associated_token::token_program = token_program,
+    )]
+    pub dust_destination: InterfaceAccount<'info, TokenAccount>,
+
+    /// Market vault.
+    #[account(
+        mut,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = market,
+        associated_token::token_program = token_program,
+        constraint = vault.key() == market.vault @ PrivatePositionInstructionError::InvalidVault,
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+
+    /// Token program.
+    pub token_program: Interface<'info, TokenInterface>,
+}
+
+impl<'info> CloseMarketDust<'info> {
+    pub fn close_market_dust(&mut self) -> Result<u64> {
+        let clock = Clock::get()?;
+
+        require!(
+            self.authority.key() == self.market.creator
+                || self.authority.key() == self.config.admin,
+            ConfigError::Unauthorized
+        );
+        self.market.assert_resolved_or_settlement_open()?;
+        require!(
+            clock.unix_timestamp
+                >= (self.market.end_time as i64)
+                    .checked_add(DUST_SWEEP_DELAY_SECONDS)
+                    .ok_or(MarketError::ArithmeticOverflow)?,
+            PrivatePositionInstructionError::DustSweepWindowOpen
+        );
+        require!(
+            self.vault.amount <= MAX_DUST_SWEEP_AMOUNT,
+            PrivatePositionInstructionError::DustBalanceTooLarge
+        );
+
+        let amount = self.vault.amount;
+
+        if amount > 0 {
+            let market_id_bytes = self.market.id.to_le_bytes();
+            let market_seeds: &[&[u8]] =
+                &[Market::SEED, market_id_bytes.as_ref(), &[self.market.bump]];
+            let signer_seeds: &[&[&[u8]]] = &[market_seeds];
+
+            transfer_checked(
+                CpiContext::new_with_signer(
+                    self.token_program.to_account_info(),
+                    TransferChecked {
+                        from: self.vault.to_account_info(),
+                        mint: self.collateral_mint.to_account_info(),
+                        to: self.dust_destination.to_account_info(),
+                        authority: self.market.to_account_info(),
+                    },
+                    signer_seeds,
+                ),
+                amount,
+                self.collateral_mint.decimals,
+            )?;
+        }
+
+        self.market.mark_closed();
+
+        emit!(MarketDustClosed {
+            market: self.market.key(),
+            authority: self.authority.key(),
+            amount,
+            timestamp: clock.unix_timestamp,
+        });
+
+        Ok(amount)
+    }
+}
+
 #[error_code]
 pub enum PrivatePositionInstructionError {
     #[msg("Invalid market vault")]
@@ -768,4 +896,10 @@ pub enum PrivatePositionInstructionError {
 
     #[msg("Invalid collateral mint")]
     InvalidCollateralMint,
+
+    #[msg("Dust sweep window is still open")]
+    DustSweepWindowOpen,
+
+    #[msg("Vault balance is larger than the dust threshold")]
+    DustBalanceTooLarge,
 }

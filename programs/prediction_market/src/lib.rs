@@ -179,6 +179,14 @@ pub mod prediction_market {
         ctx.accounts.claim_settled_private_position()
     }
 
+    /// Close a resolved market once only tiny vault dust remains.
+    ///
+    /// This is a conservative cleanup path for rounding dust, not a general
+    /// sweep of unclaimed user funds.
+    pub fn close_market_dust(ctx: Context<CloseMarketDust>) -> Result<u64> {
+        ctx.accounts.close_market_dust()
+    }
+
     // ------------------------------------------------------------------------
     // MagicBlock / PER delegation
     // ------------------------------------------------------------------------

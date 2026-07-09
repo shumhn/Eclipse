@@ -102,7 +102,9 @@ When a user buys YES or NO, the program mints virtual shares inside the private 
 
 When a user sells YES or NO, the program burns private virtual shares, releases USDC back into that user's market-private balance, and updates the aggregate AMM state.
 
-One winning virtual share is a claim on the final market reserves. The frontend quote shows:
+At resolution, winning virtual shares split the resolved AMM reserves proportionally. A share is not a fixed `$1` claim; payout depends on the final reserve size and the total winning-side virtual supply. Any collateral sold before resolution sits as idle private balance and is returned during settlement.
+
+The frontend quote shows:
 
 - average price
 - estimated shares
@@ -254,6 +256,7 @@ The Anchor program exposes the full lifecycle:
 - `settle_private_position_er` - compute a user's final claim in the ER.
 - `settle_private_position_by_keeper_er` - keeper/admin settlement path.
 - `claim_settled_private_position` - claim settled USDC from the Solana vault.
+- `close_market_dust` - close a resolved market once only tiny vault dust remains.
 
 ---
 
