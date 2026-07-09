@@ -4245,97 +4245,6 @@ export type PredictionMarket = {
       ]
     },
     {
-      "name": "resolvePriceMarketEr",
-      "docs": [
-        "Resolve a MagicBlock/Pyth price market inside ER/PER."
-      ],
-      "discriminator": [
-        143,
-        5,
-        190,
-        144,
-        194,
-        240,
-        113,
-        119
-      ],
-      "accounts": [
-        {
-          "name": "resolver",
-          "docs": [
-            "Keeper / resolver paying for the ER transaction."
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "config",
-          "docs": [
-            "Global config."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  102,
-                  105,
-                  103
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "market",
-          "docs": [
-            "Public market shell."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  109,
-                  97,
-                  114,
-                  107,
-                  101,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "market.id",
-                "account": "market"
-              }
-            ]
-          }
-        },
-        {
-          "name": "oracleFeed",
-          "docs": [
-            "MagicBlock Pyth Lazer price feed account.",
-            ""
-          ]
-        },
-        {
-          "name": "magicProgram",
-          "address": "Magic11111111111111111111111111111111111111"
-        },
-        {
-          "name": "magicContext",
-          "writable": true,
-          "address": "MagicContext1111111111111111111111111111111"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "resolvePriceMarketWithObservedPriceEr",
       "docs": [
         "Resolve a MagicBlock/Pyth price market using a historical observed price",
@@ -5881,23 +5790,83 @@ export type PredictionMarket = {
   "errors": [
     {
       "code": 6000,
-      "name": "topupReceiptAlreadyConsumed",
-      "msg": "Top-up receipt has already been consumed"
+      "name": "privateMarketNotActive",
+      "msg": "Private market is not active"
     },
     {
       "code": 6001,
-      "name": "topupReceiptMarketMismatch",
-      "msg": "Top-up receipt belongs to a different market"
+      "name": "privateMarketNotEnded",
+      "msg": "Private market has not ended yet"
     },
     {
       "code": 6002,
-      "name": "topupReceiptTraderMismatch",
-      "msg": "Top-up receipt belongs to a different trader"
+      "name": "privateMarketNotResolved",
+      "msg": "Private market is not resolved"
     },
     {
       "code": 6003,
-      "name": "invalidTopupReceiptAmount",
-      "msg": "Top-up receipt amount is invalid"
+      "name": "privateMarketCancelled",
+      "msg": "Private market has been cancelled"
+    },
+    {
+      "code": 6004,
+      "name": "privateMarketStateNotInitialized",
+      "msg": "Private market state is not initialized"
+    },
+    {
+      "code": 6005,
+      "name": "privatePositionStateNotInitialized",
+      "msg": "Private position state is not initialized"
+    },
+    {
+      "code": 6006,
+      "name": "privatePositionTraderMismatch",
+      "msg": "Private position belongs to a different trader"
+    },
+    {
+      "code": 6007,
+      "name": "privatePositionMarketMismatch",
+      "msg": "Private position belongs to a different market"
+    },
+    {
+      "code": 6008,
+      "name": "privatePositionAlreadyClaimed",
+      "msg": "Private position already claimed"
+    },
+    {
+      "code": 6009,
+      "name": "invalidPrivateMarketStatus",
+      "msg": "Invalid private market status"
+    },
+    {
+      "code": 6010,
+      "name": "invalidPrivateOutcome",
+      "msg": "Invalid private market outcome"
+    },
+    {
+      "code": 6011,
+      "name": "invalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6012,
+      "name": "insufficientPrivateCollateral",
+      "msg": "Insufficient private collateral"
+    },
+    {
+      "code": 6013,
+      "name": "insufficientPrivateShares",
+      "msg": "Insufficient private shares"
+    },
+    {
+      "code": 6014,
+      "name": "winningSupplyIsZero",
+      "msg": "Winning supply is zero"
+    },
+    {
+      "code": 6015,
+      "name": "arithmeticOverflow",
+      "msg": "Arithmetic overflow"
     }
   ],
   "types": [

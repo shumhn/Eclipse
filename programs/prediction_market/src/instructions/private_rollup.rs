@@ -11,9 +11,6 @@ use crate::state::{
     PRIVATE_POSITION_STATE_DISCRIMINATOR,
 };
 
-const PYTH_LAZER_PRICE_OFFSET: usize = 73;
-const PYTH_LAZER_PRICE_LEN: usize = 8;
-
 /// Event emitted when private market state is initialized inside MagicBlock / PER.
 #[event]
 pub struct PrivateMarketStateInitialized {
@@ -1057,11 +1054,7 @@ impl<'info> ResolvePrivateMarketEr<'info> {
     }
 }
 
-/// Resolve a private price market from a MagicBlock Pyth Lazer feed.
-///
-/// The feed account is expected to be available on the ER. MagicBlock's oracle
-/// plugin writes Pyth Lazer prices into composable accounts that can be read by
-/// programs executing inside the rollup.
+/// Resolve a private price market using an observed close-window price.
 #[commit]
 #[derive(Accounts)]
 pub struct ResolvePriceMarketEr<'info> {
@@ -1093,82 +1086,6 @@ pub struct ResolvePriceMarketEr<'info> {
 }
 
 impl<'info> ResolvePriceMarketEr<'info> {
-    pub fn resolve_price_market_er(&mut self) -> Result<()> {
-        let clock = Clock::get()?;
-
-        let market_id_bytes = self.market.id.to_le_bytes();
-        let (expected_market, expected_bump) =
-            Pubkey::find_program_address(&[Market::SEED, market_id_bytes.as_ref()], &crate::ID);
-
-        require_keys_eq!(
-            expected_market,
-            self.market.key(),
-            PrivateRollupInstructionError::InvalidMarketPda
-        );
-
-        require!(
-            expected_bump == self.market.bump,
-            PrivateRollupInstructionError::InvalidMarketPda
-        );
-
-        require!(
-            self.market.oracle_kind == MarketOracleKind::PythPrice,
-            MarketError::InvalidOracleKind
-        );
-
-        require_keys_eq!(
-            self.oracle_feed.key(),
-            self.market.oracle_feed,
-            MarketError::InvalidOracleFeed
-        );
-
-        require!(
-            clock.unix_timestamp >= self.market.end_time as i64,
-            MarketError::MarketNotEnded
-        );
-
-        require!(
-            self.market.status == MarketStatus::Active || self.market.status == MarketStatus::Ended,
-            PrivateRollupInstructionError::MarketAlreadyResolved
-        );
-
-        let observed_price = read_pyth_lazer_price(&self.oracle_feed)?;
-        let yes_wins = match self.market.price_direction {
-            PriceDirection::Above => observed_price >= self.market.target_price,
-            PriceDirection::Below => observed_price < self.market.target_price,
-        };
-
-        let outcome = if yes_wins { Outcome::Yes } else { Outcome::No };
-
-        let final_reserves = self.market.live_reserves;
-        self.market.resolver_price = observed_price;
-        self.market.mark_resolved(outcome, final_reserves);
-        self.market.mark_settlement_open();
-        self.market.exit(&crate::ID)?;
-
-        emit!(PrivateMarketResolvedEr {
-            market: self.market.key(),
-            resolver: self.resolver.key(),
-            outcome,
-            final_reserves,
-            final_yes_supply: self.market.live_yes_supply,
-            final_no_supply: self.market.live_no_supply,
-            resolver_price: observed_price,
-            resolver_publish_time: clock.unix_timestamp,
-            timestamp: clock.unix_timestamp,
-        });
-
-        MagicIntentBundleBuilder::new(
-            self.resolver.to_account_info(),
-            self.magic_context.to_account_info(),
-            self.magic_program.to_account_info(),
-        )
-        .commit(&[self.market.to_account_info()])
-        .build_and_invoke()?;
-
-        Ok(())
-    }
-
     pub fn resolve_price_market_with_observed_price_er(
         &mut self,
         observed_price: i64,
@@ -1257,20 +1174,6 @@ impl<'info> ResolvePriceMarketEr<'info> {
 
         Ok(())
     }
-}
-
-fn read_pyth_lazer_price(oracle_feed: &AccountInfo) -> Result<i64> {
-    let data = oracle_feed.try_borrow_data()?;
-    let price_end = PYTH_LAZER_PRICE_OFFSET
-        .checked_add(PYTH_LAZER_PRICE_LEN)
-        .ok_or(MarketError::ArithmeticOverflow)?;
-
-    require!(data.len() >= price_end, MarketError::OracleFeedDataTooShort);
-
-    let mut price_bytes = [0u8; PYTH_LAZER_PRICE_LEN];
-    price_bytes.copy_from_slice(&data[PYTH_LAZER_PRICE_OFFSET..price_end]);
-
-    Ok(i64::from_le_bytes(price_bytes))
 }
 
 /// Settle one private position after market resolution.

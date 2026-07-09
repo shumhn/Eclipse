@@ -1024,7 +1024,10 @@ describe('prediction_market L1 smoke', () => {
     }
 
     const ix = await ephemeralProgram.methods
-      .resolvePriceMarketEr()
+      .resolvePriceMarketWithObservedPriceEr(
+        new anchor.BN(1),
+        new anchor.BN(latestMarketEndTime)
+      )
       .accountsPartial({
         resolver: oracle.publicKey,
         config: configPda,

@@ -533,11 +533,6 @@ pub mod prediction_market {
         ctx.accounts.resolve_private_market_er(yes_wins)
     }
 
-    /// Resolve a MagicBlock/Pyth price market inside ER/PER.
-    pub fn resolve_price_market_er(ctx: Context<ResolvePriceMarketEr>) -> Result<()> {
-        ctx.accounts.resolve_price_market_er()
-    }
-
     /// Resolve a MagicBlock/Pyth price market using a historical observed price
     /// fetched off-chain for the market's configured close timestamp.
     pub fn resolve_price_market_with_observed_price_er(

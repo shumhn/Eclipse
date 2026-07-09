@@ -251,8 +251,7 @@ The Anchor program exposes the full lifecycle:
 - `consume_position_topup_receipt_er` - consume a delegated top-up receipt into private balance.
 - `consume_topup_and_place_private_prediction_er` - top up and trade through the private path.
 - `resolve_private_market_er` - resolve a manual market inside the ER.
-- `resolve_price_market_er` - resolve a price market from the configured price feed.
-- `resolve_price_market_with_observed_price_er` - resolve a price market with an observed historical price.
+- `resolve_price_market_with_observed_price_er` - resolve a price market with an observed historical close-window price.
 - `settle_private_position_er` - compute a user's final claim in the ER.
 - `settle_private_position_by_keeper_er` - keeper/admin settlement path.
 - `claim_settled_private_position` - claim settled USDC from the Solana vault.
