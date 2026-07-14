@@ -13,19 +13,6 @@ const priceFeedSymbolSchema = z.custom<PriceFeedSymbol>(
   'Unsupported price feed'
 );
 
-const sportsMarketSchema = z.object({
-  category: z.literal('world-cup'),
-  competition: z.string(),
-  eventId: z.string(),
-  eventSlug: z.string(),
-  homeTeam: z.string(),
-  awayTeam: z.string(),
-  startTime: z.string(),
-  marketType: z.enum(['match_winner', 'over_under', 'both_teams_score', 'qualify', 'custom']),
-  resolutionRule: z.string(),
-  source: z.enum(['espn', 'polymarket', 'manual']),
-}).optional();
-
 const finalizeMarketSchema = z.object({
   marketAddress: z.string(),
   walletAddress: z.string(),
@@ -40,7 +27,6 @@ const finalizeMarketSchema = z.object({
   targetPrice: z.string().optional().default('0'),
   priceDirection: z.enum(['above', 'below']).optional().default('above'),
   oracleFeed: z.string().optional(),
-  sportsMarket: sportsMarketSchema,
 });
 
 export async function POST(req: Request) {
@@ -60,7 +46,6 @@ export async function POST(req: Request) {
       targetPrice,
       priceDirection,
       oracleFeed,
-      sportsMarket,
     } = finalizeMarketSchema.parse(body);
 
     const result = await magicblockService.finalizeMarketCreation({
@@ -81,7 +66,6 @@ export async function POST(req: Request) {
       marketDelegationSignature: result.delegationSignature,
       creatorPositionDelegationSignature: result.creatorPositionDelegationSignature,
       privateStateInitializationSignature: result.privateStateInitializationSignature,
-      sportsMarket,
     });
 
     return NextResponse.json({
@@ -104,7 +88,6 @@ export async function POST(req: Request) {
         privateStateInitializationSignature: result.privateStateInitializationSignature,
         privateStateSnapshot: result.privateStateSnapshot,
         creatorPosition: result.creatorPosition,
-        sportsMarket,
         tracked: { ...trackedMarket },
       },
     });

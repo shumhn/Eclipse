@@ -6,15 +6,11 @@ import { AlertCircle, CalendarClock, ChevronDown, Clock3, Plus, RefreshCw, Searc
 import Navbar from '@/components/Navbar';
 import MarketCard from '@/components/MarketCard';
 import CreateMarketModal from '@/components/CreateMarketModal';
-import CreateSportsMarketModal from '@/components/CreateSportsMarketModal';
 import CryptoIcon from '@/components/CryptoIcon';
 import { fetchMarkets, fetchTrackedMarkets, Market, isMarketActive, CreateMarketResult } from '@/lib/api';
 
 type FilterType = 'all' | 'active' | 'resolved';
 type AssetFilter = 'all' | 'BTC' | 'ETH' | 'SOL' | 'JUP' | 'DOGE' | 'OTHER';
-type MarketCategory = 'crypto' | 'world-cup';
-
-
 const assetFilters: Array<{ label: AssetFilter; display: string }> = [
   { label: 'BTC', display: 'BTC' },
   { label: 'ETH', display: 'ETH' },
@@ -36,11 +32,6 @@ function MarketsContent() {
   const [filter, setFilter] = useState<FilterType>('active');
   const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showSportsCreateModal, setShowSportsCreateModal] = useState(false);
-
-  const category = (searchParams?.get('category') === 'world-cup' ? 'world-cup' : 'crypto') as MarketCategory;
-  const isWorldCup = category === 'world-cup';
-
   const loadMarkets = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -74,10 +65,6 @@ function MarketsContent() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    setAssetFilter('all');
-  }, [category]);
-
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
     const newParams = new URLSearchParams(searchParams?.toString() || '');
@@ -96,11 +83,7 @@ function MarketsContent() {
     setTimeout(() => loadMarkets(), 3000);
   };
 
-  const categoryMarkets = useMemo(() => {
-    return markets.filter((market) =>
-      isWorldCup ? market.sportsMarket?.category === 'world-cup' : !market.sportsMarket
-    );
-  }, [isWorldCup, markets]);
+  const categoryMarkets = markets;
 
   const assetCounts = useMemo(() => {
     const counts: Record<AssetFilter, number> = {
@@ -151,7 +134,6 @@ function MarketsContent() {
         <div className="mx-auto grid max-w-[1560px] grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside className="hidden min-h-[calc(100vh-6rem)] border-r border-eclipse-border/80 px-8 pt-4 pb-8 lg:block">
             <MarketSidebar
-              category={category}
               filter={filter}
               setFilter={setFilter}
               assetFilter={assetFilter}
@@ -166,22 +148,16 @@ function MarketsContent() {
             <div className="mb-7 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-[#f2f4f7] flex items-center gap-3">
-                  {isWorldCup ? 'World Cup Markets' : 'Predictions'}
+                  Predictions
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-eclipse-green/20 bg-eclipse-green/10 px-2.5 py-0.5 text-[11px] font-bold text-eclipse-green uppercase tracking-wider">
                     <Shield className="h-3 w-3" aria-hidden="true" />
                     Private
                   </span>
                 </h1>
                 <div className="mt-2 flex items-center gap-2 text-[13px] text-eclipse-text-muted">
-                  {isWorldCup ? (
-                    <span>Event-based sports markets with AI-assisted creation and private MagicBlock trading.</span>
-                  ) : (
-                    <>
-                      <span>Powered by</span>
-                      <img src="/magicblock-logo.svg" alt="MagicBlock" className="h-3.5 opacity-90" />
-                      <span>for zero MEV & absolute privacy.</span>
-                    </>
-                  )}
+                  <span>Powered by</span>
+                  <img src="/magicblock-logo.svg" alt="MagicBlock" className="h-3.5 opacity-90" />
+                  <span>for zero MEV & absolute privacy.</span>
                 </div>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -209,10 +185,10 @@ function MarketsContent() {
 
                 <button
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-eclipse-green px-5 text-sm font-bold text-black hover:bg-eclipse-green-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green"
-                  onClick={() => isWorldCup ? setShowSportsCreateModal(true) : setShowCreateModal(true)}
+                  onClick={() => setShowCreateModal(true)}
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
-                  {isWorldCup ? 'Create World Cup' : 'Create'}
+                  Create
                 </button>
               </div>
             </div>
@@ -278,9 +254,7 @@ function MarketsContent() {
                 <Search className="mx-auto mb-4 h-9 w-9 text-eclipse-text-muted" aria-hidden="true" />
                 <h3 className="text-lg font-bold text-white">No predictions found</h3>
                 <p className="mt-2 text-sm text-eclipse-text-muted">
-                  {isWorldCup
-                    ? 'Create the first private World Cup market from a real match.'
-                    : 'Try another asset, status, or search query.'}
+                  Try another asset, status, or search query.
                 </p>
               </div>
             )}
@@ -293,17 +267,11 @@ function MarketsContent() {
         onClose={() => setShowCreateModal(false)}
         onSuccess={handleMarketCreated}
       />
-      <CreateSportsMarketModal
-        isOpen={showSportsCreateModal}
-        onClose={() => setShowSportsCreateModal(false)}
-        onSuccess={handleMarketCreated}
-      />
     </div>
   );
 }
 
 function MarketSidebar({
-  category,
   filter,
   setFilter,
   assetFilter,
@@ -312,7 +280,6 @@ function MarketSidebar({
   activeCount,
   resolvedCount,
 }: {
-  category: MarketCategory;
   filter: FilterType;
   setFilter: (filter: FilterType) => void;
   assetFilter: AssetFilter;
@@ -321,43 +288,6 @@ function MarketSidebar({
   activeCount: number;
   resolvedCount: number;
 }) {
-  if (category === 'world-cup') {
-    return (
-      <div className="sticky top-32 space-y-8 pt-6">
-        <div className="space-y-3" aria-label="World Cup filters">
-          <SidebarStatusButton
-            active={filter === 'all'}
-            icon={<Layers className="h-4 w-4" aria-hidden="true" />}
-            label="All Matches"
-            count={assetCounts.all}
-            onClick={() => setFilter('all')}
-          />
-          <SidebarStatusButton
-            active={filter === 'active'}
-            icon={<Clock3 className="h-4 w-4" aria-hidden="true" />}
-            label="Active"
-            count={activeCount}
-            onClick={() => setFilter('active')}
-          />
-          <SidebarStatusButton
-            active={filter === 'resolved'}
-            icon={<Zap className="h-4 w-4" aria-hidden="true" />}
-            label="Resolved"
-            count={resolvedCount}
-            onClick={() => setFilter('resolved')}
-          />
-        </div>
-
-        <div className="rounded-xl border border-yellow-400/20 bg-yellow-500/10 p-4 text-sm text-yellow-100">
-          <p className="font-semibold">World Cup v1</p>
-          <p className="mt-2 text-xs leading-5 text-yellow-100/70">
-            Pick a match, generate clean questions with Gemini, then create a private YES/NO market.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="sticky top-6 space-y-8 pt-0">      <div className="space-y-3" aria-label="Asset filters">
         <SidebarAssetButton

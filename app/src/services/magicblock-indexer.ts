@@ -42,7 +42,6 @@ import {
   type PriceFeedAsset,
   type PriceFeedSymbol,
 } from '@/lib/priceFeeds';
-import type { SportsMarketMetadata } from '@/lib/sports';
 import { findKeypairByPublicKey, getDefaultKeypair, LoadedKeypair } from './solana-wallets';
 
 const PROGRAM_ID = new PublicKey('79RQQN3A4HHrogrBTwUw5py8UMhhyKFFb1CmVGagZ55t');
@@ -317,7 +316,6 @@ export interface NormalizedMarket {
     rule: string;
     oracleFeed?: string;
   };
-  sportsMarket?: SportsMarketMetadata;
   account: {
     id: string;
     question: string;

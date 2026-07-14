@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { TrendingUp, Trophy } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 
 const CATEGORIES = [
   { name: 'Trending', href: '/markets', icon: <TrendingUp className="w-4 h-4 mr-1.5 text-white/70" />, highlight: true },
-  { name: 'World Cup', icon: <Trophy className="w-4 h-4 mr-1.5 text-yellow-500" />, highlight: true, disabled: true },
   { name: 'Breaking', href: '/markets', highlight: true },
   { type: 'separator' },
   { name: 'Politics', href: '/markets' },

@@ -2,7 +2,6 @@
  * API client for Private Prediction Markets (MagicBlock TEE)
  */
 import type { PriceFeedAsset, PriceFeedSymbol } from './priceFeeds';
-import type { SportsMarketMetadata } from './sports';
 
 // Use relative URLs - Next.js rewrites will proxy to the actual API
 const API_BASE = '';
@@ -42,7 +41,6 @@ export interface Market {
     rule: string;
     oracleFeed?: string;
   };
-  sportsMarket?: SportsMarketMetadata;
   account: {
     id: string;
     question: string;
@@ -239,7 +237,6 @@ export interface CreateMarketParams {
   targetPrice?: string;
   priceDirection?: 'above' | 'below';
   oracleFeed?: string;
-  sportsMarket?: SportsMarketMetadata;
 }
 
 export interface CreateMarketResult {
@@ -260,7 +257,6 @@ export interface CreateMarketResult {
   privateStateInitializationSignature?: string | null;
   privateStateSnapshot?: Record<string, unknown> | null;
   creatorPosition?: string;
-  sportsMarket?: SportsMarketMetadata;
   tracked: {
     publicKey: string;
     question: string;
@@ -280,7 +276,6 @@ export interface CreateMarketResult {
     resolveSignature?: string | null;
     commitSignature?: string | null;
     creatorPosition?: string;
-    sportsMarket?: SportsMarketMetadata;
   };
 }
 
@@ -389,7 +384,6 @@ export interface TrackedMarketsResponse {
     resolveSignature?: string | null;
     commitSignature?: string | null;
     creatorPosition?: string;
-    sportsMarket?: SportsMarketMetadata;
   }>;
 }
 

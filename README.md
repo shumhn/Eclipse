@@ -317,8 +317,6 @@ Main API groups:
 - `/api/trading/submit` - submit a signed base-layer transaction.
 - `/api/tee/signature` - verify a TEE transaction signature against MagicBlock RPC.
 - `/api/crank/run`, `/api/crank/price-markets`, `/api/crank/settle-positions` - keeper/crank endpoints.
-- `/api/sports/events` and `/api/ai/sports-markets` - sports discovery and AI-assisted market generation helpers.
-
 ---
 
 ## Resolution Sources

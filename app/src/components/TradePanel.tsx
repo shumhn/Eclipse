@@ -67,6 +67,8 @@ export default function TradePanel({
   } | null>(null);
   const [proofLoading, setProofLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const tradeAmountInputId = `trade-amount-${marketAddress}`;
+  const depositAmountInputId = `deposit-amount-${marketAddress}`;
 
   const solanaAccount = accounts?.find((a) => a.addressType === AddressType.solana);
   const walletAddress = solanaAccount?.address || '';
@@ -460,7 +462,6 @@ export default function TradePanel({
       ? amountUsdc / quotedShares
       : 0;
   const protocolFee = tradeType === 'sell' ? sellQuote.protocolFee : quote.protocolFee;
-  const netTradeAmount = tradeType === 'sell' ? sellQuote.collateralOut : quote.netAmount;
 
   if (!tradingEnabled) {
     return (
@@ -502,7 +503,7 @@ export default function TradePanel({
           )}
           {positionsHidden && (
             <button
-              className={`pb-3 font-bold text-sm tracking-wide transition-all relative ${tradeType === 'deposit' ? 'text-[#4ade80]' : 'text-[#4ade80]/80 hover:text-[#4ade80]'}`}
+              className={`pb-3 font-bold text-sm tracking-wide transition-colors relative ${tradeType === 'deposit' ? 'text-white' : 'text-white/60 hover:text-white'}`}
               onClick={() => setTradeType('deposit')}
             >
               Deposit
@@ -532,10 +533,6 @@ export default function TradePanel({
         {(tradeType === 'buy' || tradeType === 'sell') && (
           <>
             {/* Outcome Selector */}
-            <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-widest text-white/45">
-              <span>Market odds</span>
-              <span>Execution estimated below</span>
-            </div>
             <div className="flex gap-3 mb-4">
               <button
                 onClick={() => setSide('yes')}
@@ -564,9 +561,9 @@ export default function TradePanel({
             {/* Amount Input */}
             <div className="mb-4 relative group">
               <div className="flex justify-between items-center mb-2">
-                <span className="text-white font-medium text-xs tracking-widest uppercase">
+                <label htmlFor={tradeAmountInputId} className="text-white font-medium text-xs tracking-widest uppercase">
                   {tradeType === 'sell' ? 'Shares to Sell' : 'Amount'}
-                </span>
+                </label>
                 <div className="flex items-center gap-3">
                   <span className="text-[11px] text-white font-semibold tracking-widest uppercase">
                     {tradeType === 'sell' ? 'Shares' : 'USDC'}
@@ -576,14 +573,18 @@ export default function TradePanel({
               <div className="relative bg-white/[0.02] ring-1 ring-white/[0.06] rounded-lg overflow-hidden group-focus-within:ring-white/[0.15] transition-all duration-200">
                 <div className="flex items-center h-16 px-4">
                   <span className="font-bold text-xl flex-shrink-0 text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
-                    {tradeType === 'sell' ? 'Shares' : 'USDC'}
+                    {tradeType === 'sell' ? 'Shares' : '$'}
                   </span>
                   <input
-                    type="number"
+                    id={tradeAmountInputId}
+                    type="text"
+                    inputMode="decimal"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0"
-                    className="w-full text-right bg-transparent font-bold text-4xl outline-none placeholder:text-white/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 caret-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]"
+                    autoComplete="off"
+                    aria-label={tradeType === 'sell' ? 'Shares to sell' : 'USDC amount to trade'}
+                    className="w-full text-right bg-transparent font-bold text-4xl outline-none focus-visible:ring-0 placeholder:text-white/20 text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 caret-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]"
                   />
                 </div>
                 {/* Quick Amounts */}
@@ -632,38 +633,37 @@ export default function TradePanel({
             )}
 
             {/* Estimate Details */}
-            <div className="space-y-2.5 mb-4">
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white">{tradeType === 'sell' ? 'Avg sell price' : 'Avg cost'}</span>
-                <span className="text-white font-medium tabular-nums">{(averagePrice * 100).toFixed(1)}¢</span>
+            {inputAmount > 0 ? (
+              <div className="space-y-2.5 mb-4">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-white/80">{tradeType === 'sell' ? 'Avg sell price' : 'Avg cost'}</span>
+                  <span className="text-white font-medium tabular-nums">{(averagePrice * 100).toFixed(1)}¢</span>
+                </div>
+                <div className="h-px bg-white/[0.04]" />
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-white/80">{tradeType === 'sell' ? 'Shares sold' : 'Estimated shares'}</span>
+                  <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
+                </div>
+                <div className="h-px bg-white/[0.04]" />
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-white/80">Protocol fee</span>
+                  <span className="text-white/80 font-medium tabular-nums">
+                    ${protocolFee.toFixed(4)}
+                  </span>
+                </div>
+                <div className="h-px bg-white/[0.04]" />
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-white/80">{tradeType === 'sell' ? 'Estimated USDC received' : 'Projected payout if right'}</span>
+                  <span className="text-[#4ade80] font-semibold tabular-nums">
+                    ${potentialReturn}{tradeType === 'buy' ? ` (${returnPct}%)` : ''}
+                  </span>
+                </div>
               </div>
-              <div className="h-px bg-white/[0.04]" />
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">{tradeType === 'sell' ? 'Shares sold' : 'Estimated shares'}</span>
-                <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
+            ) : (
+              <div className="mb-4 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-3 text-xs text-white/45">
+                Enter an amount to preview shares, fee, and payout.
               </div>
-              <div className="h-px bg-white/[0.04]" />
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">Protocol fee</span>
-                <span className="text-white/80 font-medium tabular-nums">
-                  ${protocolFee.toFixed(4)}
-                </span>
-              </div>
-              <div className="h-px bg-white/[0.04]" />
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">{tradeType === 'sell' ? 'Net received' : 'Net into AMM'}</span>
-                <span className="text-white/80 font-medium tabular-nums">
-                  ${netTradeAmount.toFixed(4)}
-                </span>
-              </div>
-              <div className="h-px bg-white/[0.04]" />
-              <div className="flex justify-between text-[13px]">
-                <span className="text-white/80">{tradeType === 'sell' ? 'Estimated USDC received' : 'Projected payout if right'}</span>
-                <span className="text-[#4ade80] font-semibold tabular-nums">
-                  ${potentialReturn}{tradeType === 'buy' ? ` (${returnPct}%)` : ''}
-                </span>
-              </div>
-            </div>
+            )}
 
             {error && (
               <div className="mb-6 text-xs text-[#f87171] p-3 bg-[#ef4444]/10 ring-1 ring-[#ef4444]/20 rounded-lg font-medium">
@@ -710,16 +710,19 @@ export default function TradePanel({
             </div>
             
             <div className="mb-2">
-              <span className="text-white font-medium text-xs tracking-widest uppercase block mb-2">Amount</span>
+              <label htmlFor={depositAmountInputId} className="text-white font-medium text-xs tracking-widest uppercase block mb-2">Amount</label>
               <div className="flex gap-2">
                 <div className="flex-1 rounded-lg border border-white/[0.06] bg-black/30 px-3 py-3">
                   <div className="flex items-center">
                     <span className="mr-1 text-white/40 font-bold text-lg">$</span>
                     <input
-                      type="number"
+                      id={depositAmountInputId}
+                      type="text"
+                      inputMode="decimal"
                       value={fundAmount}
                       onChange={(event) => setFundAmount(event.target.value)}
                       placeholder="0"
+                      autoComplete="off"
                       className="w-full bg-transparent text-lg font-semibold text-white outline-none placeholder:text-white/20 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                   </div>

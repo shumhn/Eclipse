@@ -114,8 +114,10 @@ const faqs: FAQItem[] = [
     question: 'Are there any fees?',
     answer: (
       <p>
-        The current devnet demo focuses on behavior rather than fee optimization. Expect standard
-        devnet transaction costs and evolving protocol economics while the product is still under construction.
+        Yes. Market creation pays a fixed public 0.50 USDC fee to the protocol treasury.
+        Private AMM buys and sells also pay an uncertainty-weighted taker fee inside MagicBlock
+        TEE/PER. Individual trade side, size, shares, and per-trade fee details are not emitted;
+        only aggregate protocol fees accrued by the market are committed.
       </p>
     ),
   },
