@@ -438,10 +438,17 @@ export default function TradePanel({
     : {
         shares: currentPrice > 0 ? amountUsdc / currentPrice : 0,
         payoutIfWins: currentPrice > 0 ? amountUsdc / currentPrice : 0,
+        protocolFee: 0,
+        netAmount: amountUsdc,
       };
   const sellQuote = quoteState && tradeType === 'sell'
     ? quoteSellToAmm(quoteState, side, inputAmount)
-    : { collateralOut: inputAmount * currentPrice, averagePrice: currentPrice };
+    : {
+        collateralOut: inputAmount * currentPrice,
+        averagePrice: currentPrice,
+        protocolFee: 0,
+        grossCollateralOut: inputAmount * currentPrice,
+      };
   const quotedShares = quote.shares;
   const quotedPayout = quote.payoutIfWins;
   const estimatedShares = (tradeType === 'sell' ? inputAmount : quotedShares).toFixed(2);
@@ -452,6 +459,8 @@ export default function TradePanel({
     : quotedShares > 0
       ? amountUsdc / quotedShares
       : 0;
+  const protocolFee = tradeType === 'sell' ? sellQuote.protocolFee : quote.protocolFee;
+  const netTradeAmount = tradeType === 'sell' ? sellQuote.collateralOut : quote.netAmount;
 
   if (!tradingEnabled) {
     return (
@@ -632,6 +641,20 @@ export default function TradePanel({
               <div className="flex justify-between text-[13px]">
                 <span className="text-white/80">{tradeType === 'sell' ? 'Shares sold' : 'Estimated shares'}</span>
                 <span className="text-white/80 font-medium tabular-nums">{estimatedShares}</span>
+              </div>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between text-[13px]">
+                <span className="text-white/80">Protocol fee</span>
+                <span className="text-white/80 font-medium tabular-nums">
+                  ${protocolFee.toFixed(4)}
+                </span>
+              </div>
+              <div className="h-px bg-white/[0.04]" />
+              <div className="flex justify-between text-[13px]">
+                <span className="text-white/80">{tradeType === 'sell' ? 'Net received' : 'Net into AMM'}</span>
+                <span className="text-white/80 font-medium tabular-nums">
+                  ${netTradeAmount.toFixed(4)}
+                </span>
               </div>
               <div className="h-px bg-white/[0.04]" />
               <div className="flex justify-between text-[13px]">

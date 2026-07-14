@@ -187,6 +187,11 @@ pub mod prediction_market {
         ctx.accounts.close_market_dust()
     }
 
+    /// Withdraw aggregate protocol trading fees to treasury.
+    pub fn withdraw_protocol_fees(ctx: Context<WithdrawProtocolFees>) -> Result<u64> {
+        ctx.accounts.withdraw_protocol_fees()
+    }
+
     // ------------------------------------------------------------------------
     // MagicBlock / PER delegation
     // ------------------------------------------------------------------------

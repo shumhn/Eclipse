@@ -24,6 +24,7 @@ pub struct PrivateMarketCreated {
     pub question: String,
     pub end_time: u64,
     pub initial_liquidity: u64,
+    pub creation_fee: u64,
     pub collateral_mint: Pubkey,
     pub vault: Pubkey,
     pub oracle_kind: MarketOracleKind,
@@ -222,15 +223,23 @@ impl<'info> CreatePrivateMarket<'info> {
         );
 
         require!(
-            self.creator_collateral.amount >= initial_liquidity,
+            self.creator_collateral.amount
+                >= initial_liquidity
+                    .checked_add(Config::MARKET_CREATION_FEE)
+                    .ok_or(MarketError::ArithmeticOverflow)?,
             CreatePrivateMarketError::InsufficientCreatorCollateral
         );
 
         let market_id = self.config.market_count;
 
+        let total_creator_payment = initial_liquidity
+            .checked_add(Config::MARKET_CREATION_FEE)
+            .ok_or(MarketError::ArithmeticOverflow)?;
+
         // Transfer real collateral from creator into the Solana L1 vault.
         //
-        // This collateral remains on Solana as escrow.
+        // Initial liquidity remains available to the AMM. The fixed creation fee
+        // stays in the vault as aggregate protocol fees for later treasury withdrawal.
         // Trading exposure will be represented privately inside MagicBlock / PER.
         transfer_checked(
             CpiContext::new(
@@ -242,7 +251,7 @@ impl<'info> CreatePrivateMarket<'info> {
                     authority: self.creator.to_account_info(),
                 },
             ),
-            initial_liquidity,
+            total_creator_payment,
             self.collateral_mint.decimals,
         )?;
 
@@ -257,7 +266,7 @@ impl<'info> CreatePrivateMarket<'info> {
             created_at: clock.unix_timestamp as u64,
             collateral_mint: self.collateral_mint.key(),
             vault: self.vault.key(),
-            total_deposited: initial_liquidity,
+            total_deposited: total_creator_payment,
             live_reserves: initial_liquidity,
             live_yes_supply: initial_virtual_supply,
             live_no_supply: initial_virtual_supply,
@@ -272,6 +281,7 @@ impl<'info> CreatePrivateMarket<'info> {
             oracle_feed,
             resolver_price: 0,
             bump: bumps.market,
+            protocol_fees_accrued: Config::MARKET_CREATION_FEE,
         });
 
         // Initialize creator's public position shell.
@@ -319,6 +329,7 @@ impl<'info> CreatePrivateMarket<'info> {
             question,
             end_time,
             initial_liquidity,
+            creation_fee: Config::MARKET_CREATION_FEE,
             collateral_mint: self.collateral_mint.key(),
             vault: self.vault.key(),
             oracle_kind,

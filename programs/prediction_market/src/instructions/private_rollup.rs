@@ -66,6 +66,17 @@ pub struct PrivatePredictionSold {
     pub timestamp: i64,
 }
 
+/// Event emitted when aggregate private trading fees change.
+///
+/// This intentionally does not reveal the individual trade side, amount, shares,
+/// or fee. The market account stores only aggregate accrued protocol fees.
+#[event]
+pub struct PrivateProtocolFeesAccrued {
+    pub market: Pubkey,
+    pub total_protocol_fees_accrued: u64,
+    pub timestamp: i64,
+}
+
 #[event]
 pub struct PrivatePositionTopupConsumedEr {
     pub market: Pubkey,
@@ -484,19 +495,39 @@ impl<'info> PlacePrivatePrediction<'info> {
         private_position.assert_market(&self.market.key())?;
         private_position.assert_not_claimed()?;
 
+        let price_bps = if predict_yes {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+            )?
+        } else {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+            )?
+        };
+        let protocol_fee =
+            PythagoreanCurve::uncertainty_weighted_fee(amount, price_bps, self.config.protocol_fee_bps)?;
+        let net_amount = amount
+            .checked_sub(protocol_fee)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        require!(net_amount > 0, PrivateStateError::InvalidAmount);
+
         let shares_to_mint = if predict_yes {
             PythagoreanCurve::get_shares_to_mint(
                 self.market.live_reserves,
                 self.market.live_yes_supply,
                 self.market.live_no_supply,
-                amount,
+                net_amount,
             )?
         } else {
             PythagoreanCurve::get_shares_to_mint(
                 self.market.live_reserves,
                 self.market.live_no_supply,
                 self.market.live_yes_supply,
-                amount,
+                net_amount,
             )?
         };
         require!(
@@ -525,10 +556,20 @@ impl<'info> PlacePrivatePrediction<'info> {
         self.market.live_reserves = self
             .market
             .live_reserves
-            .checked_add(amount)
+            .checked_add(net_amount)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        self.market.protocol_fees_accrued = self
+            .market
+            .protocol_fees_accrued
+            .checked_add(protocol_fee)
             .ok_or(PrivateStateError::ArithmeticOverflow)?;
 
         store_private_position_state(&self.private_position, &private_position)?;
+        emit!(PrivateProtocolFeesAccrued {
+            market: self.market.key(),
+            total_protocol_fees_accrued: self.market.protocol_fees_accrued,
+            timestamp: clock.unix_timestamp,
+        });
         emit!(PrivatePredictionPlaced {
             market: self.market.key(),
             trader: self.trader.key(),
@@ -586,6 +627,19 @@ impl<'info> PlacePrivatePrediction<'info> {
         private_position.assert_market(&self.market.key())?;
         private_position.assert_not_claimed()?;
 
+        let price_bps = if sell_yes {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+            )?
+        } else {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+            )?
+        };
         let collateral_out = if sell_yes {
             PythagoreanCurve::get_reserves_to_release(
                 self.market.live_reserves,
@@ -601,8 +655,16 @@ impl<'info> PlacePrivatePrediction<'info> {
                 shares,
             )?
         };
+        let protocol_fee = PythagoreanCurve::uncertainty_weighted_fee(
+            collateral_out,
+            price_bps,
+            self.config.protocol_fee_bps,
+        )?;
+        let net_collateral_out = collateral_out
+            .checked_sub(protocol_fee)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
         require!(
-            collateral_out >= min_collateral_out,
+            net_collateral_out >= min_collateral_out,
             PrivateRollupInstructionError::SlippageExceeded
         );
 
@@ -622,14 +684,24 @@ impl<'info> PlacePrivatePrediction<'info> {
                 .ok_or(PrivateStateError::ArithmeticOverflow)?;
         }
 
-        private_position.release_collateral(collateral_out)?;
+        private_position.release_collateral(net_collateral_out)?;
         self.market.live_reserves = self
             .market
             .live_reserves
             .checked_sub(collateral_out)
             .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        self.market.protocol_fees_accrued = self
+            .market
+            .protocol_fees_accrued
+            .checked_add(protocol_fee)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
 
         store_private_position_state(&self.private_position, &private_position)?;
+        emit!(PrivateProtocolFeesAccrued {
+            market: self.market.key(),
+            total_protocol_fees_accrued: self.market.protocol_fees_accrued,
+            timestamp: clock.unix_timestamp,
+        });
         emit!(PrivatePredictionSold {
             market: self.market.key(),
             trader: self.trader.key(),
@@ -869,19 +941,39 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
 
         self.position.add_deposit(self.receipt.amount)?;
         private_position.add_collateral(self.receipt.amount)?;
+        let price_bps = if predict_yes {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_yes_supply,
+                self.market.live_no_supply,
+            )?
+        } else {
+            PythagoreanCurve::get_price_bps(
+                self.market.live_reserves,
+                self.market.live_no_supply,
+                self.market.live_yes_supply,
+            )?
+        };
+        let protocol_fee =
+            PythagoreanCurve::uncertainty_weighted_fee(amount, price_bps, self.config.protocol_fee_bps)?;
+        let net_amount = amount
+            .checked_sub(protocol_fee)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        require!(net_amount > 0, PrivateStateError::InvalidAmount);
+
         let shares_to_mint = if predict_yes {
             PythagoreanCurve::get_shares_to_mint(
                 self.market.live_reserves,
                 self.market.live_yes_supply,
                 self.market.live_no_supply,
-                amount,
+                net_amount,
             )?
         } else {
             PythagoreanCurve::get_shares_to_mint(
                 self.market.live_reserves,
                 self.market.live_no_supply,
                 self.market.live_yes_supply,
-                amount,
+                net_amount,
             )?
         };
         require!(
@@ -910,7 +1002,12 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
         self.market.live_reserves = self
             .market
             .live_reserves
-            .checked_add(amount)
+            .checked_add(net_amount)
+            .ok_or(PrivateStateError::ArithmeticOverflow)?;
+        self.market.protocol_fees_accrued = self
+            .market
+            .protocol_fees_accrued
+            .checked_add(protocol_fee)
             .ok_or(PrivateStateError::ArithmeticOverflow)?;
         self.market.total_deposited = self
             .market
@@ -932,6 +1029,11 @@ impl<'info> ConsumeTopupAndPlacePrivatePredictionEr<'info> {
             receipt: self.receipt.key(),
             amount: self.receipt.amount,
             nonce: self.receipt.nonce,
+            timestamp: clock.unix_timestamp,
+        });
+        emit!(PrivateProtocolFeesAccrued {
+            market: self.market.key(),
+            total_protocol_fees_accrued: self.market.protocol_fees_accrued,
             timestamp: clock.unix_timestamp,
         });
         emit!(PrivatePredictionPlaced {

@@ -82,6 +82,11 @@ impl Config {
     /// If collateral has 6 decimals, this equals 1.000000 token.
     pub const DEFAULT_MIN_LIQUIDITY: u64 = 1_000_000;
 
+    /// Fixed fee charged on market creation to discourage spam.
+    ///
+    /// If collateral has 6 decimals, this equals 0.500000 token.
+    pub const MARKET_CREATION_FEE: u64 = 500_000;
+
     pub fn assert_not_paused(&self) -> Result<()> {
         require!(!self.paused, ConfigError::ProtocolPaused);
         Ok(())

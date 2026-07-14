@@ -5398,6 +5398,228 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "withdraw_protocol_fees",
+      "docs": [
+        "Withdraw aggregate protocol trading fees to treasury."
+      ],
+      "discriminator": [
+        11,
+        68,
+        165,
+        98,
+        18,
+        208,
+        134,
+        73
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Protocol admin / treasury authority."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market shell."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.id",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_mint",
+          "docs": [
+            "Protocol collateral mint."
+          ]
+        },
+        {
+          "name": "treasury_collateral",
+          "docs": [
+            "Protocol treasury token account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "admin"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Market vault."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "market"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "collateral_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token program."
+          ]
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated token program."
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System program."
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [],
+      "returns": "u64"
     }
   ],
   "accounts": [
@@ -5729,6 +5951,32 @@
       ]
     },
     {
+      "name": "PrivateProtocolFeesAccrued",
+      "discriminator": [
+        101,
+        176,
+        252,
+        100,
+        49,
+        205,
+        72,
+        68
+      ]
+    },
+    {
+      "name": "ProtocolFeesWithdrawn",
+      "discriminator": [
+        202,
+        213,
+        134,
+        216,
+        108,
+        14,
+        84,
+        99
+      ]
+    },
+    {
       "name": "ProtocolInitialized",
       "discriminator": [
         173,
@@ -5784,81 +6032,56 @@
   "errors": [
     {
       "code": 6000,
-      "name": "PrivateMarketNotActive",
-      "msg": "Private market is not active"
+      "name": "UnauthorizedTrader",
+      "msg": "Unauthorized trader"
     },
     {
       "code": 6001,
-      "name": "PrivateMarketNotEnded",
-      "msg": "Private market has not ended yet"
+      "name": "PositionMarketMismatch",
+      "msg": "Position does not belong to this market"
     },
     {
       "code": 6002,
-      "name": "PrivateMarketNotResolved",
-      "msg": "Private market is not resolved"
+      "name": "PositionAlreadyClaimed",
+      "msg": "Position already claimed"
     },
     {
       "code": 6003,
-      "name": "PrivateMarketCancelled",
-      "msg": "Private market has been cancelled"
+      "name": "PositionAlreadySettled",
+      "msg": "Position is already settled"
     },
     {
       "code": 6004,
-      "name": "PrivateMarketStateNotInitialized",
-      "msg": "Private market state is not initialized"
+      "name": "PositionNotSettled",
+      "msg": "Position is not settled"
     },
     {
       "code": 6005,
-      "name": "PrivatePositionStateNotInitialized",
-      "msg": "Private position state is not initialized"
+      "name": "PositionAlreadyDelegated",
+      "msg": "Position already delegated"
     },
     {
       "code": 6006,
-      "name": "PrivatePositionTraderMismatch",
-      "msg": "Private position belongs to a different trader"
+      "name": "PositionNotDelegated",
+      "msg": "Position is not delegated"
     },
     {
       "code": 6007,
-      "name": "PrivatePositionMarketMismatch",
-      "msg": "Private position belongs to a different market"
-    },
-    {
-      "code": 6008,
-      "name": "PrivatePositionAlreadyClaimed",
-      "msg": "Private position already claimed"
-    },
-    {
-      "code": 6009,
-      "name": "InvalidPrivateMarketStatus",
-      "msg": "Invalid private market status"
-    },
-    {
-      "code": 6010,
-      "name": "InvalidPrivateOutcome",
-      "msg": "Invalid private market outcome"
-    },
-    {
-      "code": 6011,
       "name": "InvalidAmount",
       "msg": "Invalid amount"
     },
     {
-      "code": 6012,
-      "name": "InsufficientPrivateCollateral",
-      "msg": "Insufficient private collateral"
+      "code": 6008,
+      "name": "InsufficientCollateral",
+      "msg": "Insufficient collateral"
     },
     {
-      "code": 6013,
-      "name": "InsufficientPrivateShares",
-      "msg": "Insufficient private shares"
+      "code": 6009,
+      "name": "ClaimAmountTooHigh",
+      "msg": "Claim amount is greater than claimable amount"
     },
     {
-      "code": 6014,
-      "name": "WinningSupplyIsZero",
-      "msg": "Winning supply is zero"
-    },
-    {
-      "code": 6015,
+      "code": 6010,
       "name": "ArithmeticOverflow",
       "msg": "Arithmetic overflow"
     }
@@ -6257,6 +6480,16 @@
               "PDA bump."
             ],
             "type": "u8"
+          },
+          {
+            "name": "protocol_fees_accrued",
+            "docs": [
+              "Aggregate protocol trading fees accrued inside the private market.",
+              "",
+              "Individual trade fees are not emitted as events. Only this market-level",
+              "aggregate is committed, preserving the side/size privacy boundary."
+            ],
+            "type": "u64"
           }
         ]
       }
@@ -6709,6 +6942,10 @@
             "type": "u64"
           },
           {
+            "name": "creation_fee",
+            "type": "u64"
+          },
+          {
             "name": "collateral_mint",
             "type": "pubkey"
           },
@@ -7043,6 +7280,59 @@
           {
             "name": "trader",
             "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrivateProtocolFeesAccrued",
+      "docs": [
+        "Event emitted when aggregate private trading fees change.",
+        "",
+        "This intentionally does not reveal the individual trade side, amount, shares,",
+        "or fee. The market account stores only aggregate accrued protocol fees."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_protocol_fees_accrued",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolFeesWithdrawn",
+      "docs": [
+        "Event emitted when aggregate protocol fees are withdrawn to treasury."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "market",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
           },
           {
             "name": "timestamp",

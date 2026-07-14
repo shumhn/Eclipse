@@ -160,6 +160,43 @@ impl PythagoreanCurve {
         u128_to_u64(price)
     }
 
+    /// Calculate an uncertainty-weighted taker fee.
+    ///
+    /// uncertainty_bps = 4 * p * (1 - p)
+    ///
+    /// This reaches the full configured fee at 50/50 odds and falls toward zero
+    /// when an outcome is already near-certain.
+    pub fn uncertainty_weighted_fee(
+        amount: u64,
+        price_bps: u64,
+        protocol_fee_bps: u16,
+    ) -> Result<u64> {
+        if amount == 0 || protocol_fee_bps == 0 {
+            return Ok(0);
+        }
+
+        require!(price_bps <= 10_000, AmmError::InvalidAmount);
+
+        let p = price_bps as u128;
+        let uncertainty_bps = p
+            .checked_mul(10_000u128.checked_sub(p).ok_or(AmmError::Overflow)?)
+            .and_then(|value| value.checked_mul(4))
+            .ok_or(AmmError::Overflow)?
+            .checked_div(10_000)
+            .ok_or(AmmError::DivisionByZero)?;
+
+        let fee = (amount as u128)
+            .checked_mul(protocol_fee_bps as u128)
+            .and_then(|value| value.checked_mul(uncertainty_bps))
+            .ok_or(AmmError::Overflow)?
+            .checked_div(10_000)
+            .ok_or(AmmError::DivisionByZero)?
+            .checked_div(10_000)
+            .ok_or(AmmError::DivisionByZero)?;
+
+        u128_to_u64(fee)
+    }
+
     /// Compute proportional payout after market resolution.
     ///
     /// payout = user_winning_shares / total_winning_shares * reserves
@@ -338,6 +375,18 @@ mod tests {
                 "sell-back should not release more collateral than the matching buy paid"
             );
         }
+    }
+
+    #[test]
+    fn uncertainty_weighted_fee_is_highest_at_fifty_fifty() {
+        let amount = 100 * USDC;
+        let max_fee = PythagoreanCurve::uncertainty_weighted_fee(amount, 5_000, 100).unwrap();
+        let skewed_fee = PythagoreanCurve::uncertainty_weighted_fee(amount, 9_000, 100).unwrap();
+        let certain_fee = PythagoreanCurve::uncertainty_weighted_fee(amount, 10_000, 100).unwrap();
+
+        assert_eq!(max_fee, USDC);
+        assert!(skewed_fee < max_fee);
+        assert_eq!(certain_fee, 0);
     }
 
     #[test]

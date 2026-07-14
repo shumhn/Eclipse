@@ -90,6 +90,12 @@ pub struct Market {
 
     /// PDA bump.
     pub bump: u8,
+
+    /// Aggregate protocol trading fees accrued inside the private market.
+    ///
+    /// Individual trade fees are not emitted as events. Only this market-level
+    /// aggregate is committed, preserving the side/size privacy boundary.
+    pub protocol_fees_accrued: u64,
 }
 
 impl Market {

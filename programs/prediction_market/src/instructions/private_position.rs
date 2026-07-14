@@ -70,6 +70,15 @@ pub struct MarketDustClosed {
     pub timestamp: i64,
 }
 
+/// Event emitted when aggregate protocol fees are withdrawn to treasury.
+#[event]
+pub struct ProtocolFeesWithdrawn {
+    pub market: Pubkey,
+    pub treasury_authority: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+}
+
 /// Open a public position shell for a trader.
 ///
 /// Important:
@@ -761,6 +770,112 @@ impl<'info> ClaimSettledPrivatePosition<'info> {
     }
 }
 
+/// Withdraw aggregate protocol trading fees accrued by a market.
+///
+/// This withdraws only the market-level aggregate fee balance. Individual trade
+/// side, size, shares, and per-trade fees are never emitted.
+#[derive(Accounts)]
+pub struct WithdrawProtocolFees<'info> {
+    /// Protocol admin / treasury authority.
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = config.admin == admin.key() @ ConfigError::Unauthorized,
+    )]
+    pub config: Account<'info, Config>,
+
+    /// Market shell.
+    #[account(
+        mut,
+        seeds = [Market::SEED, market.id.to_le_bytes().as_ref()],
+        bump = market.bump,
+        constraint = market.collateral_mint == config.collateral_mint,
+        constraint = market.collateral_mint == collateral_mint.key(),
+    )]
+    pub market: Account<'info, Market>,
+
+    /// Protocol collateral mint.
+    #[account(
+        constraint = collateral_mint.key() == config.collateral_mint,
+    )]
+    pub collateral_mint: InterfaceAccount<'info, Mint>,
+
+    /// Protocol treasury token account.
+    #[account(
+        mut,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = admin,
+        associated_token::token_program = token_program,
+    )]
+    pub treasury_collateral: InterfaceAccount<'info, TokenAccount>,
+
+    /// Market vault.
+    #[account(
+        mut,
+        associated_token::mint = collateral_mint,
+        associated_token::authority = market,
+        associated_token::token_program = token_program,
+        constraint = vault.key() == market.vault @ PrivatePositionInstructionError::InvalidVault,
+    )]
+    pub vault: InterfaceAccount<'info, TokenAccount>,
+
+    /// Token program.
+    pub token_program: Interface<'info, TokenInterface>,
+
+    /// Associated token program.
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    /// System program.
+    pub system_program: Program<'info, System>,
+}
+
+impl<'info> WithdrawProtocolFees<'info> {
+    pub fn withdraw_protocol_fees(&mut self) -> Result<u64> {
+        let clock = Clock::get()?;
+        let amount = self.market.protocol_fees_accrued;
+
+        require!(amount > 0, PrivatePositionInstructionError::NoProtocolFees);
+        require!(
+            self.vault.amount >= amount,
+            PrivatePositionInstructionError::InsufficientVaultBalance
+        );
+
+        let market_id_bytes = self.market.id.to_le_bytes();
+        let market_seeds: &[&[u8]] = &[Market::SEED, market_id_bytes.as_ref(), &[self.market.bump]];
+        let signer_seeds: &[&[&[u8]]] = &[market_seeds];
+
+        transfer_checked(
+            CpiContext::new_with_signer(
+                self.token_program.to_account_info(),
+                TransferChecked {
+                    from: self.vault.to_account_info(),
+                    mint: self.collateral_mint.to_account_info(),
+                    to: self.treasury_collateral.to_account_info(),
+                    authority: self.market.to_account_info(),
+                },
+                signer_seeds,
+            ),
+            amount,
+            self.collateral_mint.decimals,
+        )?;
+
+        self.market.protocol_fees_accrued = 0;
+
+        emit!(ProtocolFeesWithdrawn {
+            market: self.market.key(),
+            treasury_authority: self.admin.key(),
+            amount,
+            timestamp: clock.unix_timestamp,
+        });
+
+        Ok(amount)
+    }
+}
+
 /// Close a resolved market after all meaningful payouts have been claimed.
 ///
 /// This is intentionally conservative: it can only sweep a tiny residual token
@@ -902,4 +1017,7 @@ pub enum PrivatePositionInstructionError {
 
     #[msg("Vault balance is larger than the dust threshold")]
     DustBalanceTooLarge,
+
+    #[msg("No protocol fees available to withdraw")]
+    NoProtocolFees,
 }

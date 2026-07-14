@@ -64,6 +64,8 @@ export interface Market {
     target_price?: string;
     oracle_feed?: string;
     resolver_price?: string;
+    protocol_fees_accrued?: string;
+    protocol_fee_bps?: string;
   };
   isV3?: boolean;           // V3 markets have proper token mints initialized
   tradingEnabled?: boolean; // True for V3 markets
@@ -79,16 +81,21 @@ export interface MarketQuoteState {
   reserves: string;
   yesSupply: string;
   noSupply: string;
+  protocolFeeBps?: string;
 }
 
 export interface AmmTradeQuote {
   shares: number;
   payoutIfWins: number;
+  protocolFee: number;
+  netAmount: number;
 }
 
 export interface AmmSellQuote {
   collateralOut: number;
   averagePrice: number;
+  protocolFee: number;
+  grossCollateralOut: number;
 }
 
 export interface Position {
@@ -417,24 +424,48 @@ export function calculatePriceFromReserves(
   };
 }
 
+function uncertaintyWeightedFee(amount: number, price: number, protocolFeeBps: number): number {
+  if (!Number.isFinite(amount) || amount <= 0 || protocolFeeBps <= 0) return 0;
+  const p = Math.max(0, Math.min(1, price));
+  const uncertainty = 4 * p * (1 - p);
+  return amount * (protocolFeeBps / 10_000) * uncertainty;
+}
+
 export function quoteTradeFromAmm(
   quoteState: MarketQuoteState,
   side: 'yes' | 'no',
   amountUsdc: number
 ): AmmTradeQuote {
   const amount = Math.round(amountUsdc * 1_000_000);
-  if (!Number.isFinite(amount) || amount <= 0) return { shares: 0, payoutIfWins: 0 };
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { shares: 0, payoutIfWins: 0, protocolFee: 0, netAmount: 0 };
+  }
 
   const reserves = parseInt(quoteState.reserves, 16) || 0;
   const yesSupply = parseInt(quoteState.yesSupply, 16) || 0;
   const noSupply = parseInt(quoteState.noSupply, 16) || 0;
-  if (reserves <= 0 || yesSupply <= 0 || noSupply <= 0) return { shares: 0, payoutIfWins: 0 };
+  if (reserves <= 0 || yesSupply <= 0 || noSupply <= 0) {
+    return { shares: 0, payoutIfWins: 0, protocolFee: 0, netAmount: 0 };
+  }
 
   const target = side === 'yes' ? yesSupply : noSupply;
   const other = side === 'yes' ? noSupply : yesSupply;
-  const newReserves = reserves + amount;
+  const sidePrice = target / (yesSupply + noSupply);
+  const protocolFee = uncertaintyWeightedFee(
+    amountUsdc,
+    sidePrice,
+    Number(quoteState.protocolFeeBps || '100')
+  );
+  const netAmountUsdc = Math.max(0, amountUsdc - protocolFee);
+  const netAmount = Math.round(netAmountUsdc * 1_000_000);
+  if (netAmount <= 0) {
+    return { shares: 0, payoutIfWins: 0, protocolFee, netAmount: 0 };
+  }
+  const newReserves = reserves + netAmount;
   const newTargetSquared = (newReserves * newReserves) - (other * other);
-  if (newTargetSquared <= 0) return { shares: 0, payoutIfWins: 0 };
+  if (newTargetSquared <= 0) {
+    return { shares: 0, payoutIfWins: 0, protocolFee, netAmount: 0 };
+  }
 
   const newTarget = Math.floor(Math.sqrt(newTargetSquared));
   const shares = Math.max(0, newTarget - target);
@@ -442,6 +473,8 @@ export function quoteTradeFromAmm(
   return {
     shares: shares / 1_000_000,
     payoutIfWins: payoutIfWins / 1_000_000,
+    protocolFee,
+    netAmount: netAmountUsdc,
   };
 }
 
@@ -451,26 +484,38 @@ export function quoteSellToAmm(
   sharesToSell: number
 ): AmmSellQuote {
   const shares = Math.round(sharesToSell * 1_000_000);
-  if (!Number.isFinite(shares) || shares <= 0) return { collateralOut: 0, averagePrice: 0 };
+  if (!Number.isFinite(shares) || shares <= 0) {
+    return { collateralOut: 0, averagePrice: 0, protocolFee: 0, grossCollateralOut: 0 };
+  }
 
   const reserves = parseInt(quoteState.reserves, 16) || 0;
   const yesSupply = parseInt(quoteState.yesSupply, 16) || 0;
   const noSupply = parseInt(quoteState.noSupply, 16) || 0;
   if (reserves <= 0 || yesSupply <= 0 || noSupply <= 0) {
-    return { collateralOut: 0, averagePrice: 0 };
+    return { collateralOut: 0, averagePrice: 0, protocolFee: 0, grossCollateralOut: 0 };
   }
 
   const target = side === 'yes' ? yesSupply : noSupply;
   const other = side === 'yes' ? noSupply : yesSupply;
-  if (shares > target) return { collateralOut: 0, averagePrice: 0 };
+  if (shares > target) return { collateralOut: 0, averagePrice: 0, protocolFee: 0, grossCollateralOut: 0 };
 
   const newTarget = target - shares;
   const newReserves = Math.ceil(Math.sqrt((newTarget * newTarget) + (other * other)));
-  const collateralOut = Math.max(0, reserves - newReserves);
+  const grossCollateralOut = Math.max(0, reserves - newReserves);
+  const sidePrice = target / (yesSupply + noSupply);
+  const grossCollateralOutUsdc = grossCollateralOut / 1_000_000;
+  const protocolFee = uncertaintyWeightedFee(
+    grossCollateralOutUsdc,
+    sidePrice,
+    Number(quoteState.protocolFeeBps || '100')
+  );
+  const collateralOut = Math.max(0, grossCollateralOutUsdc - protocolFee);
 
   return {
-    collateralOut: collateralOut / 1_000_000,
-    averagePrice: shares > 0 ? collateralOut / shares : 0,
+    collateralOut,
+    averagePrice: shares > 0 ? collateralOut / sharesToSell : 0,
+    protocolFee,
+    grossCollateralOut: grossCollateralOutUsdc,
   };
 }
 

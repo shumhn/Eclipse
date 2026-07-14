@@ -121,6 +121,7 @@ export default function MarketDetailPage() {
         reserves: market.account.market_reserves,
         yesSupply: market.account.yes_token_supply_minted,
         noSupply: market.account.no_token_supply_minted,
+        protocolFeeBps: market.account.protocol_fee_bps,
       }
     : undefined;
 

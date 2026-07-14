@@ -56,6 +56,7 @@ const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 256);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
 const DEFAULT_SLIPPAGE_BPS = 100;
 const BPS_DENOMINATOR = BigInt(10_000);
+const MARKET_CREATION_FEE_UNITS = BigInt(500_000);
 const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEntries(
   Object.entries(PRICE_FEED_BY_SYMBOL).map(([symbol, feed]) => [
     symbol,
@@ -64,6 +65,32 @@ const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEn
 ) as Record<PriceFeedSymbol, PublicKey>;
 
 const MarketLayout = borsh.struct([
+  borsh.u64('id'),
+  borsh.publicKey('creator'),
+  borsh.str('question'),
+  borsh.u64('end_time'),
+  borsh.u64('created_at'),
+  borsh.publicKey('collateral_mint'),
+  borsh.publicKey('vault'),
+  borsh.u64('total_deposited'),
+  borsh.u64('live_reserves'),
+  borsh.u64('live_yes_supply'),
+  borsh.u64('live_no_supply'),
+  borsh.u64('final_reserves'),
+  borsh.u64('total_claimable_settled'),
+  borsh.u64('total_claimed'),
+  borsh.u8('status'),
+  borsh.u8('outcome'),
+  borsh.u8('oracle_kind'),
+  borsh.u8('price_direction'),
+  borsh.i64('target_price'),
+  borsh.publicKey('oracle_feed'),
+  borsh.i64('resolver_price'),
+  borsh.u8('bump'),
+  borsh.u64('protocol_fees_accrued'),
+]);
+
+const LegacyMarketLayout = borsh.struct([
   borsh.u64('id'),
   borsh.publicKey('creator'),
   borsh.str('question'),
@@ -166,6 +193,26 @@ function applySlippageFloor(amount: bigint, slippageBps = DEFAULT_SLIPPAGE_BPS):
   return (amount * (BPS_DENOMINATOR - bps)) / BPS_DENOMINATOR;
 }
 
+function uncertaintyWeightedFeeLamports(amount: bigint, priceBps: bigint, protocolFeeBps: bigint): bigint {
+  if (amount <= BigInt(0) || protocolFeeBps <= BigInt(0)) return BigInt(0);
+  const clampedPrice = priceBps < BigInt(0)
+    ? BigInt(0)
+    : priceBps > BPS_DENOMINATOR
+      ? BPS_DENOMINATOR
+      : priceBps;
+  const uncertaintyBps = (BigInt(4) * clampedPrice * (BPS_DENOMINATOR - clampedPrice)) / BPS_DENOMINATOR;
+  return (amount * protocolFeeBps * uncertaintyBps) / BPS_DENOMINATOR / BPS_DENOMINATOR;
+}
+
+function marketSidePriceBps(market: NormalizedMarket, side: 'yes' | 'no'): bigint {
+  const yesSupply = parseHexU64(market.account.yes_token_supply_minted);
+  const noSupply = parseHexU64(market.account.no_token_supply_minted);
+  const total = yesSupply + noSupply;
+  if (total <= BigInt(0)) return BigInt(5_000);
+  const target = side === 'yes' ? yesSupply : noSupply;
+  return (target * BPS_DENOMINATOR) / total;
+}
+
 function quoteBuySharesLamports(
   market: NormalizedMarket,
   side: 'yes' | 'no',
@@ -185,7 +232,12 @@ function quoteBuySharesLamports(
 
   const target = side === 'yes' ? yesSupply : noSupply;
   const other = side === 'yes' ? noSupply : yesSupply;
-  const newReserves = reserves + amountLamports;
+  const protocolFeeBps = BigInt(market.account.protocol_fee_bps || '0');
+  const fee = uncertaintyWeightedFeeLamports(amountLamports, marketSidePriceBps(market, side), protocolFeeBps);
+  const netAmountLamports = amountLamports > fee ? amountLamports - fee : BigInt(0);
+  if (netAmountLamports <= BigInt(0)) return BigInt(0);
+
+  const newReserves = reserves + netAmountLamports;
   const newTargetSquared = newReserves * newReserves - other * other;
   if (newTargetSquared <= BigInt(0)) return BigInt(0);
 
@@ -216,7 +268,10 @@ function quoteSellCollateralLamports(
 
   const newTarget = target - sharesLamports;
   const newReserves = integerSqrtCeil(newTarget * newTarget + other * other);
-  return reserves > newReserves ? reserves - newReserves : BigInt(0);
+  const grossOut = reserves > newReserves ? reserves - newReserves : BigInt(0);
+  const protocolFeeBps = BigInt(market.account.protocol_fee_bps || '0');
+  const fee = uncertaintyWeightedFeeLamports(grossOut, marketSidePriceBps(market, side), protocolFeeBps);
+  return grossOut > fee ? grossOut - fee : BigInt(0);
 }
 
 export interface ProtocolConfigState {
@@ -281,10 +336,12 @@ export interface NormalizedMarket {
     winning_token_id: { None: Record<string, never> } | { Some: string };
     oracle_kind?: 'manual' | 'pythPrice';
     price_direction?: 'above' | 'below';
-    target_price?: string;
-    oracle_feed?: string;
-    resolver_price?: string;
-  };
+	    target_price?: string;
+	    oracle_feed?: string;
+	    resolver_price?: string;
+	    protocol_fees_accrued?: string;
+	    protocol_fee_bps?: string;
+	  };
 }
 
 export interface NormalizedPosition {
@@ -1109,7 +1166,7 @@ export class MagicBlockIndexer {
       collateralMint,
       creator,
       creatorCollateral,
-      params.initialLiquidity
+      params.initialLiquidity + MARKET_CREATION_FEE_UNITS
     );
 
     tx.add(
@@ -2372,7 +2429,14 @@ export class MagicBlockIndexer {
   }
 
   private decodeMarketAccount(data: Buffer) {
-    return MarketLayout.decode(data.subarray(8)) as LayoutDecoded;
+    const body = data.subarray(8);
+    try {
+      return MarketLayout.decode(body) as LayoutDecoded;
+    } catch {
+      const legacy = LegacyMarketLayout.decode(body) as LayoutDecoded;
+      legacy.protocol_fees_accrued = BigInt(0);
+      return legacy;
+    }
   }
 
   private decodePositionAccount(data: Buffer) {
@@ -2501,6 +2565,8 @@ export class MagicBlockIndexer {
         target_price: asBigInt(account.target_price).toString(),
         oracle_feed: pk(account.oracle_feed),
         resolver_price: asBigInt(account.resolver_price).toString(),
+        protocol_fees_accrued: asBigInt(account.protocol_fees_accrued || 0).toString(),
+        protocol_fee_bps: asNumber(account.protocol_fee_bps ?? 100).toString(),
       },
     };
   }
@@ -2840,6 +2906,64 @@ export class MagicBlockIndexer {
     await this.waitForAccountOwner(marketPubkey, PROGRAM_ID, 60_000);
 
     return { commitSignature, alreadyCommitted: false };
+  }
+
+  async withdrawProtocolFees(marketAddress: string) {
+    const marketPubkey = new PublicKey(marketAddress);
+    const [configPda] = this.getConfigPda();
+
+    const marketInfo = await this.connection.getAccountInfo(marketPubkey, 'confirmed');
+    if (!marketInfo) {
+      throw new Error('Market account not found.');
+    }
+    if (!marketInfo.owner.equals(PROGRAM_ID)) {
+      throw new Error('Protocol fees can be withdrawn after the market is committed back to base.');
+    }
+
+    const config = await this.getProtocolConfig();
+    const admin = await this.requireMatchingKeypair(config.admin, 'admin');
+    const collateralMint = new PublicKey(config.collateralMint);
+    const treasuryCollateral = await getAssociatedTokenAddress(collateralMint, admin.keypair.publicKey);
+    const vault = await getAssociatedTokenAddress(collateralMint, marketPubkey, true);
+    const program = this.createInstructionProgram(this.connection);
+
+    const tx = new Transaction().add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        admin.keypair.publicKey,
+        treasuryCollateral,
+        admin.keypair.publicKey,
+        collateralMint
+      )
+    );
+
+    const ix = await program.methods
+      .withdrawProtocolFees()
+      .accountsPartial({
+        admin: admin.keypair.publicKey,
+        config: configPda,
+        market: marketPubkey,
+        collateralMint,
+        treasuryCollateral,
+        vault,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    tx.add(ix);
+
+    const signature = await sendAndConfirmTransaction(
+      this.connection,
+      tx,
+      [admin.keypair],
+      { commitment: 'confirmed' }
+    );
+
+    return {
+      signature,
+      treasury: treasuryCollateral.toBase58(),
+    };
   }
 
   async prepareSettleTransaction(params: {

@@ -25,6 +25,7 @@ Eclipse lets users create and trade binary YES/NO markets with a privacy-preserv
 - Fund a market-specific private position before trading, or use the direct top-up plus trade flow.
 - Keep individual side, shares, and position state inside TEE/PER while the market is active.
 - Keep aggregate AMM odds visible for price discovery.
+- Charge market creation fees and privacy-preserving aggregate trading fees.
 - Settle winners after resolution and claim USDC from the Solana vault.
 
 This is a devnet build, not a production deployment.
@@ -80,6 +81,23 @@ What remains visible or inferable:
 This is why the honest pitch is:
 
 > Eclipse hides user-level position and order-flow details inside MagicBlock TEE state while keeping aggregate market prices visible for discovery and settlement.
+
+---
+
+## Revenue Model
+
+Eclipse monetizes the marketplace, not the outcome.
+
+- **Market creation fee:** each new market pays a fixed public 0.50 USDC fee to the protocol treasury. This discourages spam and funds protocol operations.
+- **Private trading fee:** each private AMM buy/sell pays an uncertainty-weighted taker fee inside MagicBlock TEE/PER. The fee is highest around 50/50 odds and lower near certain outcomes.
+- **Privacy boundary:** individual trade side, size, shares, and per-trade fees are not emitted. Only aggregate protocol fees accrued by a market are committed.
+- **Treasury withdrawal:** the protocol admin can withdraw the market-level aggregate fee balance to the treasury token account.
+
+In one line:
+
+```text
+Eclipse earns from market creation and private AMM volume while keeping per-wallet trades private.
+```
 
 ---
 
@@ -255,6 +273,7 @@ The Anchor program exposes the full lifecycle:
 - `settle_private_position_er` - compute a user's final claim in the ER.
 - `settle_private_position_by_keeper_er` - keeper/admin settlement path.
 - `claim_settled_private_position` - claim settled USDC from the Solana vault.
+- `withdraw_protocol_fees` - withdraw aggregate protocol trading fees to treasury.
 - `close_market_dust` - close a resolved market once only tiny vault dust remains.
 
 ---
@@ -283,6 +302,7 @@ Main API groups:
 - `/api/markets` - list markets and prepare/create/finalize market creation.
 - `/api/markets/[id]` - fetch one market by id or address.
 - `/api/markets/tracked` - read tracked market proofs and metadata.
+- `/api/markets/withdraw-fees` - admin withdrawal for aggregate market-level protocol fees.
 - `/api/oracles/price-feeds` - fetch supported live crypto price feeds.
 - `/api/positions` - fetch a wallet's position, using a TEE auth token when private state is delegated.
 - `/api/trading/prepare-position` - open/fund a position shell or create a top-up receipt.

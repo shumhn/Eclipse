@@ -19,6 +19,8 @@ import {
   type SportsMarketSuggestion,
 } from '@/lib/sports';
 
+const MARKET_CREATION_FEE_USDC = 0.5;
+
 interface CreateSportsMarketModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -54,6 +56,11 @@ export default function CreateSportsMarketModal({
     () => events.find((event) => event.id === selectedEventId) || events[0],
     [events, selectedEventId]
   );
+
+  const totalCreateCostUsdc = useMemo(() => {
+    const liquidity = Number(initialLiquidity || 0);
+    return (Number.isFinite(liquidity) ? liquidity : 0) + MARKET_CREATION_FEE_USDC;
+  }, [initialLiquidity]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -311,6 +318,10 @@ export default function CreateSportsMarketModal({
                     onChange={(event) => setInitialLiquidity(event.target.value)}
                     className="mt-2 h-11 w-full rounded-md border border-white/10 bg-[#0d0e10] px-3 text-sm text-white focus:border-eclipse-green focus:outline-none focus-visible:ring-2 focus-visible:ring-eclipse-green"
                   />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Public creation fee: {MARKET_CREATION_FEE_USDC.toFixed(2)} USDC. Total wallet charge:{' '}
+                    {totalCreateCostUsdc.toFixed(2)} USDC.
+                  </p>
                 </div>
 
                 <div>
