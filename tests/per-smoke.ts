@@ -64,7 +64,7 @@ async function sendTeeTransaction(
     skipPreflight: true,
   });
 
-  await connection.confirmTransaction(
+  const status = await connection.confirmTransaction(
     {
       signature,
       blockhash: latest.blockhash,
@@ -72,6 +72,21 @@ async function sendTeeTransaction(
     },
     'confirmed'
   );
+
+  if (status.value.err) {
+    try {
+      const txDetail = await connection.getTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+      console.log('TEE tx logs:', JSON.stringify(txDetail?.meta?.logMessages));
+      console.log('TEE tx err:', JSON.stringify(txDetail?.meta?.err));
+    } catch (fetchErr) {
+      console.log('Failed to fetch TEE tx logs:', fetchErr);
+    }
+
+    throw new Error(`TEE tx failed: ${JSON.stringify(status.value.err)}`);
+  }
 
   return signature;
 }
@@ -125,9 +140,12 @@ describe('PER Prediction Market Smoke', () => {
   let configPda: PublicKey;
   let marketPda: PublicKey;
   let marketId: number;
+  let marketEndTime: number;
   let traderPositionPda: PublicKey;
   let marketStatePda: PublicKey;
   let privatePositionPda: PublicKey;
+  let topupReceiptPda: PublicKey;
+  let topupNonce: bigint;
   let vaultAta: PublicKey;
 
   before(async () => {
@@ -242,6 +260,10 @@ describe('PER Prediction Market Smoke', () => {
       [Buffer.from('position'), marketPda.toBuffer(), trader.publicKey.toBuffer()],
       PROGRAM_ID
     );
+    [privatePositionPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from('private_position_state'), marketPda.toBuffer(), trader.publicKey.toBuffer()],
+      PROGRAM_ID
+    );
 
     vaultAta = await getAssociatedTokenAddress(collateralMint, marketPda, true);
     const creatorCollateral = await getAssociatedTokenAddress(collateralMint, trader.publicKey);
@@ -255,10 +277,12 @@ describe('PER Prediction Market Smoke', () => {
       )
     );
 
+    marketEndTime = Math.floor(Date.now() / 1000) + 45;
+
     const createIx = await program.methods
       .createPrivateMarket(
         "Will this smoke test pass?",
-        new BN(Math.floor(Date.now() / 1000) + 3600), // end in 1 hour
+        new BN(marketEndTime),
         new BN(1_000_000) // 1 USDC initial liquidity
       )
       .accounts({
@@ -277,14 +301,15 @@ describe('PER Prediction Market Smoke', () => {
       
     tx.add(createIx);
     
-    try {
-      await provider.sendAndConfirm(tx, [trader]);
-    } catch (e: any) {
-      console.log("createPrivateMarket failed (possibly already created in previous run):", e.message);
-    }
+    await provider.sendAndConfirm(tx, [trader]);
       
     const marketData = await (program.account as any).market.fetch(marketPda);
     assert.equal(marketData.question, "Will this smoke test pass?");
+    assert.equal(
+      (marketData.protocolFeesAccrued as anchor.BN).toNumber(),
+      500_000,
+      'creation fee should accrue as aggregate protocol fees'
+    );
   });
 
   it('delegates market', async () => {
@@ -344,6 +369,10 @@ describe('PER Prediction Market Smoke', () => {
     const bufferPosition = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(traderPositionPda, PROGRAM_ID);
     const delegationRecordPosition = delegationRecordPdaFromDelegatedAccount(traderPositionPda);
     const delegationMetadataPosition = delegationMetadataPdaFromDelegatedAccount(traderPositionPda);
+    const privatePositionPermission = permissionPdaFromAccount(privatePositionPda);
+    const bufferPrivatePosition = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(privatePositionPda, PROGRAM_ID);
+    const delegationRecordPrivatePosition = delegationRecordPdaFromDelegatedAccount(privatePositionPda);
+    const delegationMetadataPrivatePosition = delegationMetadataPdaFromDelegatedAccount(privatePositionPda);
 
     try {
       await program.methods
@@ -382,12 +411,53 @@ describe('PER Prediction Market Smoke', () => {
         })
         .instruction();
 
+      const createPrivatePositionPermissionIx = await program.methods
+        .createPrivatePositionPermission()
+        .accounts({
+          authority: admin.publicKey,
+          config: configPda,
+          privatePosition: privatePositionPda,
+          permission: privatePositionPermission,
+          permissionProgram: PERMISSION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+
+      const delegatePrivatePermissionIx = createDelegatePermissionInstruction({
+        payer: admin.publicKey,
+        authority: [admin.publicKey, true],
+        permissionedAccount: [privatePositionPda, false],
+        ownerProgram: PERMISSION_PROGRAM_ID,
+        validator: new PublicKey('FnE6VJT5QNZdedZPnCoLsARgBwoE6DeJNjBs2H1gySXA'),
+      });
+
+      const delegatePrivatePositionIx = await program.methods
+        .delegatePrivatePositionIntoTee(marketPda, trader.publicKey)
+        .accounts({
+          authority: admin.publicKey,
+          config: configPda,
+          bufferPrivatePosition,
+          delegationRecordPrivatePosition,
+          delegationMetadataPrivatePosition,
+          privatePosition: privatePositionPda,
+          ownerProgram: PROGRAM_ID,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .instruction();
+
       await provider.sendAndConfirm(
-        new Transaction().add(delegatePermissionIx, delegatePositionIx),
+        new Transaction().add(
+          delegatePermissionIx,
+          delegatePositionIx,
+          createPrivatePositionPermissionIx,
+          delegatePrivatePermissionIx,
+          delegatePrivatePositionIx
+        ),
         [admin]
       );
     } catch (e: any) {
-      console.log("delegatePositionIntoTee failed (possibly already delegated):", e.message);
+      console.log("delegate position/private position failed (possibly already delegated):", e.message);
     }
   });
 
@@ -397,11 +467,6 @@ describe('PER Prediction Market Smoke', () => {
       PROGRAM_ID
     );
     
-    [privatePositionPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('private_position_state'), marketPda.toBuffer(), trader.publicKey.toBuffer()],
-      PROGRAM_ID
-    );
-
     // Wait a few seconds for Devnet RPC to propagate the delegation state
     // so the ConnectionMagicRouter knows to route this to L2.
     await new Promise(r => setTimeout(r, 3000));
@@ -441,57 +506,119 @@ describe('PER Prediction Market Smoke', () => {
     }
   });
 
-  it('buys YES inside ER', async () => {
-    const amountToSpend = new BN(1_000_000); // 1 USDC
-    
-    // We expect the private position to have available collateral since the creator deposited 10 USDC initially
-    // and it was converted into shares + leftover collateral. Let's just buy more YES using leftover collateral if any,
-    // or just assume we have enough for 1 USDC. 
-    // Wait, the initial 10 USDC is fully consumed. We need to open another position or deposit more.
-    // For simplicity, let's just resolve the market and settle what we have, 
-    // but the task asks to "buy inside ER". 
-    // If the creator doesn't have idle collateral, this will fail. Let's see if we can just test resolve.
-    // Actually, we can just execute the transaction and if it throws InsufficientFunds, that's fine for the smoke test structure,
-    // but ideally we'd deposit first.
-    // Let's just try to buy 0 USDC, or skip to resolve. We'll attempt a 0 USDC buy or just wrap in try/catch.
-    try {
-        const ix = await ephemeralProgram.methods
-        .buyPrivateEr(amountToSpend, true, new BN(0))
-        .accounts({
-            trader: trader.publicKey,
-            config: configPda,
-            market: marketPda,
-            position: traderPositionPda,
-            marketState: marketStatePda,
-            privatePosition: privatePositionPda,
-            vault: MAGIC_VAULT_ID,
-            magicProgram: MAGIC_PROGRAM_ID,
-        })
-        .instruction();
+  it('tops up and buys YES inside ER', async () => {
+    const amountToSpend = new BN(100_000); // 0.10 USDC
+    topupNonce = BigInt(Date.now()) * BigInt(1000);
+    const nonceBuf = Buffer.alloc(8);
+    nonceBuf.writeBigUInt64LE(topupNonce);
+    [topupReceiptPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('position_topup_receipt'),
+        marketPda.toBuffer(),
+        trader.publicKey.toBuffer(),
+        nonceBuf,
+      ],
+      PROGRAM_ID
+    );
 
-        ix.keys = ix.keys.map((key) => {
-          if (key.pubkey.equals(MAGIC_VAULT_ID)) {
-            return { ...key, isWritable: true };
-          }
+    const traderCollateral = await getAssociatedTokenAddress(collateralMint, trader.publicKey);
+    const topupIx = await program.methods
+      .createPositionTopupReceipt(new BN(topupNonce.toString()), amountToSpend)
+      .accounts({
+        trader: trader.publicKey,
+        config: configPda,
+        market: marketPda,
+        receipt: topupReceiptPda,
+        collateralMint,
+        traderCollateral,
+        vault: vaultAta,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
 
-          if (key.pubkey.equals(marketPda)) {
-            return { ...key, isWritable: false };
-          }
+    await provider.sendAndConfirm(new Transaction().add(topupIx), [trader]);
 
-          return key;
-        });
+    const receiptPermission = permissionPdaFromAccount(topupReceiptPda);
+    const bufferReceipt = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(topupReceiptPda, PROGRAM_ID);
+    const delegationRecordReceipt = delegationRecordPdaFromDelegatedAccount(topupReceiptPda);
+    const delegationMetadataReceipt = delegationMetadataPdaFromDelegatedAccount(topupReceiptPda);
 
-        await sendTeeTransaction(
-          ephemeralConnection,
-          new Transaction().add(ix),
-          trader
-        );
-    } catch (e: any) {
-        console.log("Buy inside ER failed (expected if no idle collateral):", e.message);
-    }
+    const createReceiptPermissionIx = await program.methods
+      .createTopupReceiptPermission()
+      .accounts({
+        authority: admin.publicKey,
+        config: configPda,
+        receipt: topupReceiptPda,
+        permission: receiptPermission,
+        permissionProgram: PERMISSION_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    const delegatePermissionIx = createDelegatePermissionInstruction({
+      payer: admin.publicKey,
+      authority: [admin.publicKey, true],
+      permissionedAccount: [topupReceiptPda, false],
+      ownerProgram: PERMISSION_PROGRAM_ID,
+      validator: new PublicKey('FnE6VJT5QNZdedZPnCoLsARgBwoE6DeJNjBs2H1gySXA'),
+    });
+
+    const delegateReceiptIx = await program.methods
+      .delegateTopupReceiptIntoTee(marketPda, trader.publicKey, new BN(topupNonce.toString()))
+      .accounts({
+        authority: admin.publicKey,
+        config: configPda,
+        bufferReceipt,
+        delegationRecordReceipt,
+        delegationMetadataReceipt,
+        receipt: topupReceiptPda,
+        ownerProgram: PROGRAM_ID,
+        delegationProgram: DELEGATION_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .instruction();
+
+    await provider.sendAndConfirm(
+      new Transaction().add(createReceiptPermissionIx, delegatePermissionIx, delegateReceiptIx),
+      [admin]
+    );
+
+    await sleep(3_000);
+
+    const buyIx = await ephemeralProgram.methods
+      .consumeTopupAndPlacePrivatePredictionEr(amountToSpend, true, new BN(0))
+      .accountsPartial({
+        trader: trader.publicKey,
+        config: configPda,
+        market: marketPda,
+        position: traderPositionPda,
+        privatePosition: privatePositionPda,
+        receipt: topupReceiptPda,
+        magicProgram: MAGIC_PROGRAM_ID,
+        magicContext: MAGIC_CONTEXT_ID,
+      })
+      .instruction();
+
+    const buySig = await sendTeeTransaction(
+      ephemeralConnection,
+      new Transaction().add(buyIx),
+      trader
+    );
+    console.log('private_buy:', buySig);
+
+    const marketData = await (ephemeralProgram.account as any).market.fetch(marketPda);
+    const accruedFees = (marketData.protocolFeesAccrued as anchor.BN).toNumber();
+    assert.isAbove(accruedFees, 500_000, 'private trade fee should increase aggregate protocol fees');
   });
 
   it('resolves market inside ER', async () => {
+    const waitMs = (marketEndTime * 1000) - Date.now() + 2_000;
+    if (waitMs > 0) {
+      console.log(`waiting ${waitMs}ms for market end`);
+      await sleep(waitMs);
+    }
+
     const ix = await ephemeralProgram.methods
       .resolvePrivateMarketEr(true) // YES wins
       .accounts({
@@ -514,14 +641,14 @@ describe('PER Prediction Market Smoke', () => {
   it('settles position inside ER', async () => {
     const ix = await ephemeralProgram.methods
       .settlePrivatePositionEr()
-      .accounts({
+      .accountsPartial({
         trader: trader.publicKey,
+        config: configPda,
         market: marketPda,
         position: traderPositionPda,
-        marketState: marketStatePda,
         privatePosition: privatePositionPda,
-        vault: MAGIC_VAULT_ID,
         magicProgram: MAGIC_PROGRAM_ID,
+        magicContext: MAGIC_CONTEXT_ID,
       })
       .instruction();
 

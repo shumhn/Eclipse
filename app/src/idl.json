@@ -1297,8 +1297,7 @@
           "writable": true
         },
         {
-          "name": "permission_program",
-          "writable": true
+          "name": "permission_program"
         },
         {
           "name": "system_program",
@@ -1385,8 +1384,7 @@
           "writable": true
         },
         {
-          "name": "permission_program",
-          "writable": true
+          "name": "permission_program"
         },
         {
           "name": "system_program",
@@ -2298,8 +2296,7 @@
           "writable": true
         },
         {
-          "name": "permission_program",
-          "writable": true
+          "name": "permission_program"
         },
         {
           "name": "system_program",
@@ -2402,8 +2399,7 @@
           "writable": true
         },
         {
-          "name": "permission_program",
-          "writable": true
+          "name": "permission_program"
         },
         {
           "name": "system_program",
@@ -5106,6 +5102,60 @@
       ]
     },
     {
+      "name": "update_protocol_fee_bps",
+      "docs": [
+        "Update protocol trading fee in basis points."
+      ],
+      "discriminator": [
+        250,
+        82,
+        118,
+        249,
+        87,
+        90,
+        188,
+        150
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Protocol admin."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_protocol_fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "update_tee_validator",
       "docs": [
         "Update MagicBlock / PER validator identity."
@@ -5961,6 +6011,19 @@
         205,
         72,
         68
+      ]
+    },
+    {
+      "name": "ProtocolFeeUpdated",
+      "discriminator": [
+        172,
+        56,
+        83,
+        113,
+        219,
+        69,
+        69,
+        105
       ]
     },
     {
@@ -7310,6 +7373,29 @@
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolFeeUpdated",
+      "docs": [
+        "Event emitted when protocol fee changes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_protocol_fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "new_protocol_fee_bps",
+            "type": "u16"
           }
         ]
       }

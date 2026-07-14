@@ -71,6 +71,15 @@ pub mod prediction_market {
         ctx.accounts.update_oracle(new_oracle)
     }
 
+    /// Update protocol trading fee in basis points.
+    pub fn update_protocol_fee_bps(
+        ctx: Context<UpdateProtocolFeeBps>,
+        new_protocol_fee_bps: u16,
+    ) -> Result<()> {
+        ctx.accounts
+            .update_protocol_fee_bps(new_protocol_fee_bps)
+    }
+
     /// Update MagicBlock / PER validator identity.
     pub fn update_tee_validator(
         ctx: Context<UpdateTeeValidator>,

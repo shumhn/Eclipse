@@ -29,6 +29,14 @@ pub struct OracleUpdated {
     pub new_oracle: Pubkey,
 }
 
+/// Event emitted when protocol fee changes.
+#[event]
+pub struct ProtocolFeeUpdated {
+    pub admin: Pubkey,
+    pub old_protocol_fee_bps: u16,
+    pub new_protocol_fee_bps: u16,
+}
+
 /// Event emitted when MagicBlock / PER validator identity changes.
 #[event]
 pub struct TeeValidatorUpdated {
@@ -175,6 +183,43 @@ impl<'info> UpdateOracle<'info> {
             admin: self.admin.key(),
             old_oracle,
             new_oracle,
+        });
+
+        Ok(())
+    }
+}
+
+/// Accounts for updating protocol fee.
+#[derive(Accounts)]
+pub struct UpdateProtocolFeeBps<'info> {
+    /// Protocol admin.
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// Global config.
+    #[account(
+        mut,
+        seeds = [Config::SEED],
+        bump = config.bump,
+        constraint = config.admin == admin.key() @ ConfigError::Unauthorized,
+    )]
+    pub config: Account<'info, Config>,
+}
+
+impl<'info> UpdateProtocolFeeBps<'info> {
+    pub fn update_protocol_fee_bps(&mut self, new_protocol_fee_bps: u16) -> Result<()> {
+        require!(
+            new_protocol_fee_bps <= Config::MAX_PROTOCOL_FEE_BPS,
+            ConfigError::FeeTooHigh
+        );
+
+        let old_protocol_fee_bps = self.config.protocol_fee_bps;
+        self.config.protocol_fee_bps = new_protocol_fee_bps;
+
+        emit!(ProtocolFeeUpdated {
+            admin: self.admin.key(),
+            old_protocol_fee_bps,
+            new_protocol_fee_bps,
         });
 
         Ok(())

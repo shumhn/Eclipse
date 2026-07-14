@@ -1303,8 +1303,7 @@ export type PredictionMarket = {
           "writable": true
         },
         {
-          "name": "permissionProgram",
-          "writable": true
+          "name": "permissionProgram"
         },
         {
           "name": "systemProgram",
@@ -1391,8 +1390,7 @@ export type PredictionMarket = {
           "writable": true
         },
         {
-          "name": "permissionProgram",
-          "writable": true
+          "name": "permissionProgram"
         },
         {
           "name": "systemProgram",
@@ -2304,8 +2302,7 @@ export type PredictionMarket = {
           "writable": true
         },
         {
-          "name": "permissionProgram",
-          "writable": true
+          "name": "permissionProgram"
         },
         {
           "name": "systemProgram",
@@ -2408,8 +2405,7 @@ export type PredictionMarket = {
           "writable": true
         },
         {
-          "name": "permissionProgram",
-          "writable": true
+          "name": "permissionProgram"
         },
         {
           "name": "systemProgram",
@@ -5112,6 +5108,60 @@ export type PredictionMarket = {
       ]
     },
     {
+      "name": "updateProtocolFeeBps",
+      "docs": [
+        "Update protocol trading fee in basis points."
+      ],
+      "discriminator": [
+        250,
+        82,
+        118,
+        249,
+        87,
+        90,
+        188,
+        150
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": [
+            "Protocol admin."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "Global config."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "newProtocolFeeBps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
       "name": "updateTeeValidator",
       "docs": [
         "Update MagicBlock / PER validator identity."
@@ -5967,6 +6017,19 @@ export type PredictionMarket = {
         205,
         72,
         68
+      ]
+    },
+    {
+      "name": "protocolFeeUpdated",
+      "discriminator": [
+        172,
+        56,
+        83,
+        113,
+        219,
+        69,
+        69,
+        105
       ]
     },
     {
@@ -7316,6 +7379,29 @@ export type PredictionMarket = {
           {
             "name": "timestamp",
             "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "protocolFeeUpdated",
+      "docs": [
+        "Event emitted when protocol fee changes."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "oldProtocolFeeBps",
+            "type": "u16"
+          },
+          {
+            "name": "newProtocolFeeBps",
+            "type": "u16"
           }
         ]
       }

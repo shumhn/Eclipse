@@ -103,7 +103,6 @@ pub struct CreateMarketPermission<'info> {
     pub permission: UncheckedAccount<'info>,
 
     /// CHECK: MagicBlock permission program CPI target.
-    #[account(mut)]
     pub permission_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
@@ -174,7 +173,6 @@ pub struct CreatePositionPermission<'info> {
     pub permission: UncheckedAccount<'info>,
 
     /// CHECK: MagicBlock permission program CPI target.
-    #[account(mut)]
     pub permission_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
@@ -201,7 +199,6 @@ pub struct CreatePrivatePositionPermission<'info> {
     pub permission: UncheckedAccount<'info>,
 
     /// CHECK: MagicBlock permission program CPI target.
-    #[account(mut)]
     pub permission_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
@@ -236,7 +233,6 @@ pub struct CreateTopupReceiptPermission<'info> {
     pub permission: UncheckedAccount<'info>,
 
     /// CHECK: MagicBlock permission program CPI target.
-    #[account(mut)]
     pub permission_program: UncheckedAccount<'info>,
 
     pub system_program: Program<'info, System>,
