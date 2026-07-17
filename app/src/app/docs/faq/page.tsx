@@ -38,7 +38,7 @@ const faqs: FAQItem[] = [
     answer: (
       <p>
         No. The current rollout is on Solana devnet. Treat it as a product and protocol demo until
-        audits, operations, and the final undelegation path are fully finished.
+        audits, operations, and mainnet rollout hardening are complete.
       </p>
     ),
   },
@@ -49,14 +49,16 @@ const faqs: FAQItem[] = [
       <>
         <p><strong>Hidden during the PER trading window:</strong></p>
         <ul className="list-disc list-inside mt-1 mb-3">
-          <li>Live position balances</li>
-          <li>Live market reserves and evolving odds</li>
+          <li>A trader&apos;s YES/NO side</li>
+          <li>A trader&apos;s virtual shares</li>
+          <li>A trader&apos;s market-private balance</li>
           <li>Other traders&apos; exact active exposure</li>
         </ul>
         <p><strong>Public on Solana:</strong></p>
         <ul className="list-disc list-inside mt-1">
-          <li>The market question and odds</li>
+          <li>The market question</li>
           <li>The market shell and trader position shell accounts</li>
+          <li>Aggregate AMM odds and reserves for price discovery</li>
           <li>Delegation status and final resolved state once committed back</li>
         </ul>
       </>
@@ -104,8 +106,7 @@ const faqs: FAQItem[] = [
     answer: (
       <p>
         The configured oracle resolves the outcome, the PER market state settles, and the final
-        state is committed back toward Solana. The last undelegation and L1 claim step is the part
-        still being finished in this build.
+        state is committed back toward Solana so winners can claim from the vault.
       </p>
     ),
   },
@@ -144,8 +145,8 @@ const faqs: FAQItem[] = [
     question: 'What still is not fully done?',
     answer: (
       <p>
-        Final undelegation from the delegation program back to the prediction-market program and the
-        last user-facing L1 claim step still need to be finalized and re-tested end to end.
+        This is still a devnet build. Production work remains around audits, mainnet operations,
+        stronger oracle policy, monitoring, and hardening the hosted infrastructure.
       </p>
     ),
   },
@@ -165,7 +166,7 @@ const faqs: FAQItem[] = [
     answer: (
       <p>
         Yes. The codebase
-        includes the Next.js frontend, Express backend, and Anchor smart contracts.
+        includes the Next.js frontend/API routes and Anchor smart contracts.
       </p>
     ),
   },
@@ -175,7 +176,7 @@ const faqs: FAQItem[] = [
     answer: (
       <p>
         Start with the core flow only: open `/markets`, inspect a market detail page, create a market,
-        and verify trade preparation. Once that path is stable, then test the deeper PER settlement lifecycle.
+        place a private trade, resolve after expiry, settle, and claim from the vault.
       </p>
     ),
   },

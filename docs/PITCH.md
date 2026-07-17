@@ -1,174 +1,100 @@
-# Eclipse
+# Eclipse Pitch
 
-Privacy for prediction markets on Solana. Hide your bet sizes from front-runners.
+Private AMM prediction markets on Solana, powered by MagicBlock Ephemeral Rollups.
 
-## The Problem
+## Problem
 
-Prediction markets are transparent by design. When you place a bet, everyone sees it:
-- Your wallet address
-- The amount you bet
-- Which side you took
+Prediction markets need public prices, but they do not need to expose every trader's live position.
 
-This creates problems.
+In normal on-chain markets, observers can often see:
 
-If you have conviction on a market and want to bet big, bots see your order the moment it hits. They copy it. They front-run it. By the time your trade executes, the price has moved against you.
+- which side a wallet takes
+- how much it trades
+- how its position changes before resolution
 
-Large traders lose their edge. Retail traders get squeezed. Market makers face adverse selection. The people with real information have no way to profit from it without revealing that information.
+That creates copy-trading, front-running, and social pressure around large or informed positions.
 
-## Our Solution
+## Solution
 
-Eclipse encrypts your bet amounts using Fully Homomorphic Encryption.
+Eclipse keeps the market itself public, while moving the active trading state into MagicBlock TEE/PER.
 
-When you bet on a Dark Market:
-1. Your USDC is wrapped into DAC (Eclipse Confidential) tokens
-2. The amount is encrypted using Inco Network's FHE
-3. Your bet is placed with the encrypted amount
-4. Other traders see activity happening, but not the size
-5. Market resolves, DAC is unwrapped back to USDC
+The result:
 
-You interact with USDC. We handle the privacy layer automatically.
+- public YES/NO odds for price discovery
+- private trader side, virtual shares, and market-private balance during the active window
+- final settlement committed back to Solana
+- devnet USDC custody through the Solana vault
 
-## How It Works
+In one line:
 
-### DAC Token
-
-We built a custom SPL token program called DAC (Eclipse Confidential).
-
-When you deposit USDC:
-- USDC goes into a vault
-- You receive an encrypted balance
-- The balance is stored as a 128-bit ciphertext handle
-- Only you can decrypt it (through Inco's co-validator)
-
-The vault is 1:1 backed. Every DAC token has USDC behind it.
-
-### Dark Markets
-
-Markets using DAC as collateral are Dark Markets. They work like normal prediction markets except:
-
-| Normal Market | Dark Market |
-|---------------|-------------|
-| Bet sizes visible | Bet sizes encrypted |
-| Easy to front-run | Cannot see individual bets |
-| Everyone copies winners | Strategy stays private |
-
-The market odds are still public. Total volume is visible. But individual positions are hidden.
-
-### The Trade Flow
-
-1. Connect Phantom wallet
-2. Select a Dark Market
-3. Enter how much USDC you want to bet
-4. We wrap your USDC to DAC in the same transaction
-5. The bet is placed with your encrypted DAC
-6. You sign one transaction, done
-
-When the market resolves, winning positions are unwrapped to USDC automatically.
-
-## Technical Details
-
-### Deployed Contracts
-
-| Component | Address (Devnet) |
-|-----------|------------------|
-| DAC Program | `ByaYNFzb2fPCkWLJCMEY4tdrfNqEAKAPJB3kDX86W5Rq` |
-| DAC SPL Mint | `JBxiN5BBM8ottNaUUpWw6EFtpMRd6iTnmLYrhZB5ArMo` |
-| Mint Authority PDA | `TtFoW2UtEqkVGiGtbwwnzMxyGk1JyneqeNGiZEhcDRJ` |
-| Inco Lightning | `5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj` |
-
-### Encryption
-
-We use Inco Network for FHE. The encryption happens through their Lightning program on Solana.
-
-When you deposit USDC:
+```text
+Public market odds, private trader positions.
 ```
-USDC amount (plaintext) -> Inco Lightning CPI -> Balance handle (ciphertext)
-```
-
-The handle is a reference to encrypted data. Arithmetic operations (add, subtract) happen on the handles directly. The actual values never exist unencrypted on-chain.
-
-### Client-Side Signing
-
-Your private key never touches our server. The flow:
-1. Client requests unsigned transaction
-2. Server builds it with the right accounts
-3. Client signs with Phantom
-4. Client submits signed transaction
-
-If our server gets compromised, your funds are safe.
 
 ## What We Built
 
-### Frontend (Next.js)
-- Market browser with Dark Market filter
+### Frontend
+
+- Next.js market browser and detail pages
 - Phantom wallet integration
-- Encrypted balance display
-- One-click betting with auto-wrapping
+- Market creation flow with live MagicBlock/Pyth price feeds
+- Private buy, sell, deposit, settle, and claim UI
+- Fee preview for market creation and private AMM trading
 
-### Backend (Express)
-- Dark Markets API
-- CORE Protocol integration
-- Privacy-preserving order book
-- AI agent for market creation
+### Backend
 
-### On-Chain (Anchor)
-- DAC token program
-- Inco Lightning integration
-- Deposit/withdraw/transfer instructions
+- Next.js API routes for market creation, trading, settlement, claims, and crank flows
+- MagicBlock TEE/PER transaction preparation
+- Market tracking and proof-signature display
+- Keeper endpoints for expired price markets
 
-## The Stack
+### On-Chain
 
-- Solana (devnet)
-- Anchor 0.31.1
-- Inco Network FHE
-- CORE Protocol
-- Next.js 14
-- Express.js
+- Anchor prediction market program on Solana devnet
+- Private virtual YES/NO AMM state
+- Market-specific private trader positions
+- Manual and MagicBlock/Pyth price resolution paths
+- Aggregate protocol fee accrual and treasury withdrawal
+
+## Revenue Model
+
+- Fixed public market creation fee: `0.50 USDC`
+- Private AMM buy/sell taker fee inside MagicBlock TEE/PER
+- Individual side, size, shares, and per-trade fee are not emitted
+- Only aggregate protocol fees per market are committed
+
+## Stack
+
+- Solana devnet
+- Anchor
+- MagicBlock Ephemeral Rollups / TEE RPC
+- MagicBlock/Pyth price feeds
+- Next.js
 - Phantom React SDK
-- Google Gemini (AI agent)
+- Devnet USDC
 
-## Why This Matters
+## Demo Flow
 
-### For Traders
-No more front-running. Your strategy stays private. You can bet with conviction without signaling it to everyone.
+1. Connect Phantom on devnet.
+2. Create a crypto price market.
+3. Delegate market/private state into MagicBlock.
+4. Deposit into a market-private balance or use direct top-up plus trade.
+5. Buy or sell YES/NO through the private AMM.
+6. Resolve after the deadline from the configured price feed.
+7. Settle and claim from the Solana vault.
 
-### For Markets
-Better price discovery. Traders with real information can act on it. Liquidity improves when large orders do not move price before execution.
+## Honest Scope
 
-### For the Space
-First real implementation of private betting on Solana using FHE. Shows that prediction markets can be both transparent (market-level) and private (position-level).
+Eclipse is a working devnet prototype, not a production deployment.
 
-## Limitations
+Current production work remaining:
 
-This is an experimental project.
-
-- Running on devnet only
-- DAC program not audited
-- Inco integration uses alpha endpoints
-- CORE SDK does not expose transaction building for client-side signing (workaround in place)
-
-Do not use with real funds.
-
-## What's Next
-
-1. Mainnet deployment after security audit
-2. Full Inco SDK integration for withdrawal decryption
-3. Work with CORE team on native DAC market support
-4. Batch transactions for multiple bets
-5. MEV protection for transaction submission
-
-## Demo
-
-Visit the web app and:
-1. Connect Phantom (set to devnet)
-2. Click "Eclipse" filter on markets page
-3. Pick a market
-4. Enter bet amount
-5. Sign the transaction
-6. Your position is now encrypted
-
-Check the order book page to see aggregate activity without individual positions.
+- audits
+- mainnet operations
+- stronger oracle policy
+- monitoring and alerting
+- deeper adversarial testing
 
 ---
 
-Built on Solana
+Built on Solana and MagicBlock.

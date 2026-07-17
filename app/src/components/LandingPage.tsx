@@ -132,12 +132,12 @@ const Features = () => (
           {
             icon: EyeOff,
             title: "Zero-Knowledge State",
-            desc: "Order books and individual positions are completely hidden inside the TEE until the market resolves."
+            desc: "Individual positions are hidden inside the TEE during the active market window while aggregate odds stay visible."
           },
           {
             icon: Zap,
             title: "Sub-Second Latency",
-            desc: "Trades execute instantly inside the Ephemeral Rollup with zero gas fees during the active market window."
+            desc: "Trades execute quickly inside the Ephemeral Rollup, with protocol fees previewed before the user signs."
           },
           {
             icon: Shield,

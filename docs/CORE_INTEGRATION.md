@@ -1,5 +1,7 @@
 # CORE Protocol Integration
 
+> Archived research note: this document describes an earlier CORE/DAC/Inco design direction. The current Eclipse app uses a custom Anchor prediction market program with MagicBlock TEE/PER private AMM trading. See `README.md` and `docs/ARCHITECTURE.md` for the current architecture.
+
 This document explains how Eclipse integrates with CORE Protocol and the changes needed for native confidential token support.
 
 ## Current Architecture

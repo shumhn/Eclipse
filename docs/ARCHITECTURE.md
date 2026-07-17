@@ -1,269 +1,175 @@
 # Architecture
 
-This document explains how Eclipse provides privacy-preserving prediction markets on Solana.
+This document explains the current Eclipse devnet architecture.
 
-## Overview
+Eclipse is a private AMM prediction market on Solana. Solana anchors custody and settlement, while MagicBlock TEE/PER handles the active private trading window.
+
+## Components
 
 Eclipse has three main components:
 
-1. DAC Token Program - An Anchor program that wraps USDC into encrypted confidential tokens
-2. Web Frontend - A Next.js app where users interact with markets
-3. API Backend - An Express server that handles market operations and privacy services
+1. **Anchor program** - creates markets, stores vaults, controls settlement, and exposes private AMM instructions.
+2. **Next.js app** - user interface and API routes for creation, trading, settlement, claims, and keeper flows.
+3. **MagicBlock TEE/PER** - delegated execution layer for private market and position state.
 
-## Privacy Layer
+## Privacy Model
 
-### The Problem
+Eclipse does not hide the market itself. It hides user-level live trading details.
 
-In standard prediction markets, every bet is publicly visible on-chain. If you place a large bet, other traders see it immediately and can:
-- Front-run your order
-- Copy your strategy
-- Move the price against you before you finish trading
+**Public by design:**
 
-### The Solution
+- market question
+- market creator
+- initial liquidity
+- aggregate AMM odds and reserves
+- final resolved outcome
 
-Eclipse uses Inco Network's Fully Homomorphic Encryption (FHE) to encrypt bet amounts on-chain. Here's how it works:
+**Private during active trading:**
 
-1. User wants to bet 1000 USDC on YES
-2. The 1000 USDC is wrapped into DAC (Eclipse Confidential) tokens
-3. The DAC balance is stored as an encrypted handle on-chain
-4. The bet is placed using DAC tokens
-5. Other traders see that a bet occurred but cannot see the amount
-6. When the market resolves, DAC is unwrapped back to USDC
+- trader side
+- trader virtual shares
+- trader market-private balance
+- exact per-wallet exposure
 
-## DAC Token Program
+This keeps price discovery public while reducing copy-trading and front-running of individual positions.
 
-The DAC token is a custom SPL token built with Anchor that integrates with Inco Lightning for FHE operations.
+## Market State
 
-### Accounts
+Each market stores a public shell on Solana and a delegated private state in MagicBlock.
 
-**DacMint** - The mint authority for DAC tokens
-- Stores the USDC mint it wraps
-- Tracks total supply (encrypted)
-- Controls the vault that holds USDC collateral
+Core AMM fields:
 
-**DacAccount** - A user's DAC token account
-- Stores encrypted balance as a handle (128-bit ciphertext reference)
-- Linked to the user's public key
-- Can only be decrypted by the owner
+- `live_reserves`
+- `live_yes_supply`
+- `live_no_supply`
+- `final_reserves`
+- `protocol_fees_accrued`
 
-**Vault** - Holds the USDC collateral
-- PDA controlled by the DAC program
-- 1:1 backing - every DAC is backed by USDC in the vault
+The UI computes odds from aggregate virtual supply:
 
-### Instructions
+```text
+yes_price = yes_supply / (yes_supply + no_supply)
+no_price  = no_supply  / (yes_supply + no_supply)
+```
 
-**deposit** - Wrap USDC to DAC
-- Transfers USDC from user to vault
-- Encrypts amount via Inco Lightning
-- Adds encrypted amount to user's balance handle
+Winning virtual shares split resolved AMM reserves proportionally. One share is not a fixed one-dollar claim.
 
-**withdraw** - Unwrap DAC to USDC
-- Decrypts user's balance (requires proof from Inco co-validator)
-- Transfers USDC from vault to user
-- Updates encrypted balance handle
+## User Flow
 
-**transfer** - Send DAC between accounts
-- Subtracts from sender's encrypted balance
-- Adds to receiver's encrypted balance
-- Amount stays encrypted throughout
-
-### Program Addresses
-
-| Component | Address |
-|-----------|---------|
-| DAC Program | `ByaYNFzb2fPCkWLJCMEY4tdrfNqEAKAPJB3kDX86W5Rq` |
-| DAC SPL Mint | `JBxiN5BBM8ottNaUUpWw6EFtpMRd6iTnmLYrhZB5ArMo` |
-| Mint Authority PDA | `TtFoW2UtEqkVGiGtbwwnzMxyGk1JyneqeNGiZEhcDRJ` |
-
-## Inco Integration
-
-Inco Network provides the FHE infrastructure. We use two components:
-
-### Inco Lightning Program
-Address: `5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj`
-
-This on-chain program handles:
-- Creating encrypted values (CPI from DAC program)
-- Arithmetic on encrypted values (add, subtract)
-- Comparison operations (for balance checks)
-
-### Inco Co-Validator
-Endpoint: `https://grpc.solana-devnet.alpha.devnet.inco.org`
-
-This off-chain service handles:
-- Decryption requests (when users want to withdraw)
-- Signature verification (proves the requester owns the data)
-- Returns signed plaintext that can be verified on-chain
-
-## Dark Markets
-
-Dark Markets are prediction markets that use DAC as collateral instead of USDC.
-
-### How They Differ from Regular Markets
-
-| Aspect | Regular Market | Dark Market |
-|--------|---------------|-------------|
-| Collateral | USDC | DAC (encrypted) |
-| Bet visibility | Public | Hidden |
-| Position sizes | Anyone can see | Only owner knows |
-| Market odds | Public | Public |
-
-### User Flow
-
-1. User has USDC in their wallet
-2. User clicks "Bet YES" on a Dark Market
-3. Behind the scenes:
-   - USDC is wrapped to DAC (automatic)
-   - DAC is used to buy YES tokens
-   - The amount is encrypted
-4. Other users see aggregate volume but not individual bets
-5. When market resolves:
-   - Winning DAC is unwrapped to USDC
-   - User receives USDC directly
-
-The user only needs to think about USDC. The DAC wrapping is abstracted away.
+1. User connects Phantom on devnet.
+2. User creates or opens a market.
+3. App prepares a wallet-signed market creation or trading transaction.
+4. Market and position state are delegated into MagicBlock.
+5. User deposits into a market-private balance or uses direct top-up plus trade.
+6. User buys or sells YES/NO through the private AMM.
+7. After expiry, the market resolves.
+8. Position is settled and committed back.
+9. User claims USDC from the Solana vault.
 
 ## Frontend Architecture
 
-```
-apps/web/
-├── src/
-│   ├── app/           # Next.js pages
-│   │   ├── markets/   # Market listing and detail pages
-│   │   ├── portfolio/ # User positions
-│   │   ├── orderbook/ # Privacy-preserving order book
-│   │   └── agent/     # AI agent interface
-│   ├── components/    # React components
-│   ├── lib/
-│   │   ├── api.ts     # API client
-│   │   ├── trading.ts # Trading utilities
-│   │   └── dac/       # DAC token client
-│   └── hooks/         # React hooks
+```text
+app/src
+├── app/                    # Next.js App Router pages and API routes
+│   ├── markets/            # Market listing and detail pages
+│   ├── portfolio/          # Wallet-specific positions
+│   └── api/                # Creation, trading, oracle, crank, and claim routes
+├── components/             # React components
+├── lib/                    # API client, trading helpers, price feeds
+├── services/               # MagicBlock/Solana service layer
+└── hooks/                  # Live price feed hooks
 ```
 
-### Key Flows
+## Program Architecture
 
-**Connecting Wallet**
-- Uses @phantom/react-sdk for multi-chain support
-- Fetches SOL, USDC, and DAC balances on connect
-- DAC balance shown as encrypted handle (actual value hidden)
-
-**Placing a Bet**
-1. User selects market and amount
-2. Frontend calls `/api/dark-markets/prepare-bet`
-3. Server returns unsigned transaction
-4. User signs with Phantom
-5. Frontend submits signed transaction
-6. Server broadcasts to Solana
-
-**Viewing Positions**
-- Positions stored in privacy-preserving order book
-- User sees their own positions with commitment hashes
-- Public view shows aggregate statistics only
-
-## Backend Architecture
-
-```
-apps/api/
-├── src/
-│   ├── routes/
-│   │   ├── markets.ts      # Market CRUD
-│   │   ├── trading.ts      # Trade execution
-│   │   ├── darkMarkets.ts  # Dark Market operations
-│   │   ├── orderbook.ts    # Privacy order book
-│   │   └── agent.ts        # AI market creation
-│   ├── services/
-│   │   ├── core.ts          # CORE SDK wrapper
-│   │   ├── darkMarkets.ts  # DAC market service
-│   │   ├── inco.ts         # Inco SDK wrapper
-│   │   └── ai-provider.ts  # AI for market generation
-│   └── index.ts            # Express app
+```text
+programs/prediction_market/src
+├── instructions/
+│   ├── create_private_market.rs
+│   ├── private_position.rs
+│   ├── private_rollup.rs
+│   ├── delegate.rs
+│   └── initialize.rs
+├── state/
+│   ├── market.rs
+│   ├── position.rs
+│   ├── private_state.rs
+│   └── config.rs
+└── amm/
+    └── bonding_curve.rs
 ```
 
-### Client-Side Signing
+## Creation Path
 
-The server never holds user private keys. The flow is:
+Market creation is wallet-signed.
 
-1. Client requests unsigned transaction from server
-2. Server builds transaction with correct accounts and data
-3. Server returns base64-encoded transaction
-4. Client deserializes and signs with Phantom
-5. Client submits signed transaction
-6. Server broadcasts to network
+1. `POST /api/markets/prepare-create`
+2. Wallet signs and sends the Solana transaction.
+3. `POST /api/markets/finalize`
+4. App delegates market and private state into MagicBlock.
+5. App records proof signatures for the UI.
 
-This keeps user funds secure even if the server is compromised.
+Market creation charges a public fixed fee to the protocol treasury.
 
-## CORE Integration
+## Private Trading Path
 
-CORE Protocol provides the prediction market infrastructure. We use:
+Private trading is wallet-signed.
 
-- `COREClient` - SDK for market operations
-- `fetchMarkets()` - Get all markets
-- `fetchMarket(address)` - Get specific market
-- `createMarket()` - Create new market with custom collateral
-- `buyTokensUsdc()` - Purchase YES/NO tokens
+1. Wallet obtains a MagicBlock TEE auth token.
+2. App prepares funding/top-up if market-private balance is too low.
+3. App prepares a private buy or sell transaction.
+4. Wallet signs and sends to MagicBlock TEE/PER.
+5. App refreshes private position and aggregate AMM odds.
 
-For Dark Markets, we specify DAC mint as the `baseMint` parameter when creating markets.
+Private trading charges an uncertainty-weighted taker fee inside the PER path. Only aggregate fee accrual is committed.
 
-## AI Agent
+## Resolution
 
-The AI agent scans news sources and creates prediction markets automatically.
+Eclipse supports two resolution modes:
 
-### News Sources
-- CoinDesk RSS
-- CoinTelegraph
-- Custom feeds
+- **Manual resolver** - configured resolver/admin commits the final YES/NO outcome.
+- **MagicBlock/Pyth price market** - crank compares the observed close-window price against the market target.
 
-### Market Generation
-1. Agent fetches recent news
-2. Google Gemini analyzes for prediction-worthy events
-3. Agent formats as yes/no question
-4. Market created via CORE SDK
+For `above` price markets:
 
-### Configuration
-- Runs on scheduled intervals
-- Can be triggered manually via API
-- Markets tagged as "Eclipse" for tracking
+```text
+YES if observed_price >= target_price
+NO otherwise
+```
+
+For `below` markets, the comparison is inverted.
+
+## Keeper / Crank
+
+The crank endpoints live in:
+
+```text
+app/src/app/api/crank
+```
+
+They handle:
+
+- resolving expired price markets
+- settling resolved positions when possible
+- keeping devnet markets moving through the lifecycle
 
 ## Security Considerations
 
-**Private Key Handling**
-- Server private key used only for market creation
-- User private keys never touch the server
-- All user trades are client-signed
-
-**Encryption**
-- FHE handles encrypted arithmetic
-- Decryption requires co-validator signature
-- Balance handles are 128-bit ciphertext references
-
-**On-Chain Security**
-- DAC program checks all authority signatures
-- Vault controlled by PDA (not externally owned account)
-- USDC fully collateralized at all times
+- User private keys never touch the server.
+- Wallet signs base-layer and PER transactions directly.
+- Public events do not emit individual private trade side, size, shares, or per-trade fee.
+- Slippage protection is enforced for private buy/sell preparation.
+- Protocol fees accrue as aggregate market-level accounting.
 
 ## Limitations
 
-**Current Constraints**
-- Running on devnet only
-- DAC program not audited
-- Inco integration uses alpha co-validator endpoint
-- CORE SDK limits transaction building flexibility
+- Devnet only.
+- Not audited.
+- Aggregate AMM odds remain visible by design.
+- Funding/top-up movements can reveal collateral movement.
+- Sparse markets may allow approximate inference from aggregate odds movement.
+- Production rollout needs stronger oracle policy, monitoring, and operational hardening.
 
-**Future Work**
-- Mainnet deployment with audited contracts
-- Full Inco SDK integration for decryption
-- MEV protection for transaction submission
-- Batch transaction support for multiple bets
+---
 
-## Documentation
-
-The web app includes comprehensive documentation at `/docs`:
-
-- **Getting Started** - Step-by-step guide to placing your first bet
-- **How It Works** - Detailed explanation of FHE and the privacy layer
-- **Architecture** - Technical overview of all components
-- **Smart Contracts** - DAC program details and CORE integration
-- **FAQ** - Common questions and answers
-
-For CORE integration details and proposed changes for native confidential token support, see [docs/CORE_INTEGRATION.md](./docs/CORE_INTEGRATION.md).
+Current architecture: Solana custody and settlement, MagicBlock private execution, public AMM odds, private trader positions.

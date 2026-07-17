@@ -1,5 +1,7 @@
 # Confidential Prediction Markets on Solana: Integrating Inco Lightning with CORE Exchange
 
+> Archived research note: this file captures an earlier Inco/CORE/FHE exploration. The current Eclipse implementation uses MagicBlock TEE/PER and a custom Anchor private AMM program. See `README.md` and `docs/ARCHITECTURE.md` for the current shipped devnet architecture.
+
 ## Abstract
 
 This document presents a technical analysis and architectural proposal for implementing privacy-preserving prediction markets on Solana. We examine three distinct approaches for integrating Inco Lightning's encrypted computation primitives with CORE Exchange's prediction market infrastructure. The goal is to enable traders to place positions without revealing their trading amounts, wallet identities, or aggregate market sentiment until resolution. We provide concrete implementation paths, evaluate tradeoffs, and propose a phased development roadmap.

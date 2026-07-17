@@ -1,201 +1,148 @@
 # Features
 
-A list of what Eclipse does.
+A list of what Eclipse currently does.
 
-## Dark Markets
+## Private AMM Markets
 
-Markets that use DAC (encrypted) tokens as collateral.
-
-**What it does:**
-- Creates prediction markets where bet amounts are hidden
-- Uses Inco FHE to encrypt position sizes on-chain
-- Shows aggregate market data without revealing individual bets
-
-**How to use:**
-- Go to Markets page
-- Click "Eclipse" filter
-- Select a market and place your bet
-- Your USDC is auto-wrapped to DAC
-
-## DAC Token (Eclipse Confidential)
-
-A custom SPL token with encrypted balances.
+Eclipse creates binary YES/NO prediction markets with a private active trading layer.
 
 **What it does:**
-- Wraps USDC into privacy-preserving tokens
-- Stores balances as encrypted handles using Inco Lightning
-- Allows transfers without revealing amounts
-- 1:1 backed by USDC in vault
 
-**Addresses (Devnet):**
-- Program: `ByaYNFzb2fPCkWLJCMEY4tdrfNqEAKAPJB3kDX86W5Rq`
-- Mint: `4UNGxzRPHLeDtuNYDMm4oJGGLpyYZz4rKeLmdiqenL9x`
-- Vault: `HF76kBeLpciBeCrpZvEBxbG6FGZNifUmCumFaVZBFVTk`
+- Creates devnet USDC-backed prediction markets.
+- Seeds each market with initial liquidity.
+- Uses virtual YES/NO AMM shares instead of public outcome token mints during active trading.
+- Keeps aggregate odds visible for price discovery.
 
-## Privacy-Preserving Order Book
+## MagicBlock Private Trading
 
-An order book that shows activity without revealing individual positions.
+Active trading runs through MagicBlock TEE/PER.
 
-**What it does:**
-- Stores encrypted positions off-chain
-- Shows aggregate statistics (total volume, position count)
-- Generates commitment hashes for position verification
-- Keeps individual bet sizes private
+**Hidden during the active window:**
 
-**What you see:**
-- Number of YES positions
-- Number of NO positions
-- Estimated probability
-- Recent activity (timestamps only, no amounts)
+- trader side
+- trader virtual shares
+- trader market-private balance
+- exact per-wallet exposure
 
-## Client-Side Signing
+**Still public or inferable:**
 
-Users sign their own transactions. Server never holds private keys.
+- market existence
+- initial liquidity
+- funding/top-up movements
+- aggregate AMM odds and reserves
 
-**What it does:**
-- Server builds unsigned transactions
-- Returns base64-encoded transaction data
-- User signs with Phantom
-- User submits signed transaction
+## Buy, Sell, Deposit
 
-**Why it matters:**
-- Your funds are safe even if our server is compromised
-- You control your keys at all times
+Users can manage a market-specific private balance.
 
-## Auto-Wrapping
+**Supported actions:**
 
-USDC to DAC conversion happens automatically when betting.
+- deposit USDC into a market-private balance
+- buy YES or NO from that private balance
+- use direct top-up plus trade when balance is too low
+- sell YES or NO shares back into the AMM
 
-**What it does:**
-- Detects when you are betting on a Dark Market
-- Wraps your USDC to DAC in the same transaction
-- No extra steps needed
+## Fees
 
-**User experience:**
-- You only think about USDC
-- We handle the DAC conversion
-- One signature, done
+Eclipse has a protocol revenue model.
+
+**Supported fees:**
+
+- public `0.50 USDC` market creation fee
+- uncertainty-weighted private AMM taker fee on buys and sells
+- aggregate protocol fee accrual per market
+- admin treasury withdrawal for accrued protocol fees
+
+Individual trade side, size, shares, and per-trade fee are not emitted.
+
+## Price Markets
+
+Automated crypto price markets use MagicBlock/Pyth feeds.
+
+**Supported assets:**
+
+- BTC
+- ETH
+- SOL
+- JUP
+
+Price markets resolve against the observed close-window price after the deadline.
+
+## Manual Markets
+
+Manual markets can still be resolved by the configured resolver/admin path.
+
+This is useful for devnet demos and clear YES/NO events that do not yet have an automated oracle policy.
 
 ## Wallet Integration
 
-Phantom wallet support with balance display.
+Phantom wallet support is built into the app.
 
 **What it does:**
-- Connects via @phantom/react-sdk
-- Shows SOL balance
-- Shows USDC balance
-- Shows DAC account status
-- Links to devnet faucets
 
-**DAC balance display:**
-- Shows encrypted handle (not actual amount)
-- Indicates if DAC account exists
-- Balance is private - only you know the real value
-
-## AI Agent
-
-Creates prediction markets from news automatically.
-
-**What it does:**
-- Scans crypto news feeds
-- Identifies prediction-worthy events
-- Generates yes/no questions
-- Creates markets via CORE SDK
-
-**News sources:**
-- CoinDesk
-- CoinTelegraph
-- Custom RSS feeds
-
-**Powered by:**
-- Google Gemini
+- connects Solana wallet accounts
+- signs base-layer Solana transactions
+- signs MagicBlock TEE/PER transactions
+- requests MagicBlock auth tokens for private RPC access
+- links to devnet faucets and explorers
 
 ## Market Browser
 
 Browse and search prediction markets.
 
 **Filters:**
-- All: Every market
-- Active: Not yet resolved, not expired
-- Eclipse: DAC-collateralized markets
-- Resolved: Markets that have ended
 
-**Search:**
-- Search by market question text
+- All
+- Active
+- Resolved
+- Asset filters for supported crypto markets
 
 **Display:**
-- Market question
-- Current YES/NO prices
-- Time remaining
-- Liquidity
 
-## Position Tracking
+- market question
+- YES/NO odds
+- live or resolved status
+- asset and target price context
 
-Track your encrypted positions.
+## Portfolio And Claims
 
-**Portfolio page shows:**
-- Your positions (by commitment hash)
-- Position status (pending, active, settled)
-- Encrypted amount (handle only)
-- Market information
+Users can inspect their own private market positions after connecting a wallet.
 
-**You can:**
-- Verify position exists via commitment hash
-- View settlement outcome
-- Track winnings
+**Supported flow:**
 
-## Market Detail Page
-
-View full market information and place bets.
-
-**Shows:**
-- Market question
-- Current prices
-- Price history chart
-- Order placement form
-- Market metadata
-
-**Actions:**
-- Place YES bet
-- Place NO bet
-- View on Solana Explorer
+- view market-specific position
+- settle after resolution
+- commit the settled position state
+- claim USDC from the Solana vault
 
 ## API
 
-Full REST API for all operations.
+The app uses Next.js API routes.
 
-**Market endpoints:**
-- GET /api/markets - List markets
-- GET /api/markets/:id - Get market
-- POST /api/markets/create - Create market
+**Main API groups:**
 
-**Dark Markets:**
-- GET /api/dark-markets - List Dark Markets
-- POST /api/dark-markets/prepare-bet - Prepare bet transaction
-
-**Trading:**
-- POST /api/trading/prepare - Prepare transaction
-- POST /api/trading/submit - Submit signed transaction
-
-**Order Book:**
-- POST /api/orderbook/submit - Submit position
-- GET /api/orderbook/stats - Get statistics
-- GET /api/orderbook/activity - Get activity feed
+- `/api/markets`
+- `/api/markets/prepare-create`
+- `/api/markets/finalize`
+- `/api/markets/withdraw-fees`
+- `/api/trading/prepare-private`
+- `/api/trading/prepare-sell`
+- `/api/trading/prepare-settle`
+- `/api/trading/prepare-claim`
+- `/api/crank/run`
+- `/api/oracles/price-feeds`
 
 ## Network Support
 
 Running on Solana devnet.
 
 **Configured:**
-- Solana devnet RPC
-- Devnet USDC mint
-- Devnet DAC program
-- Inco devnet co-validator
 
-**Faucets:**
-- SOL: https://faucet.solana.com
-- USDC: https://spl-token-faucet.com
+- Solana devnet RPC
+- MagicBlock devnet TEE/PER RPC
+- Devnet USDC mint
+- deployed prediction market program
 
 ---
 
-All features are experimental. Not audited. Devnet only.
+Experimental devnet build. Not audited. Do not use with real funds.

@@ -7,7 +7,7 @@ const statusItems = [
   'Permissionless market creation on Solana devnet',
   'Market and position delegation into MagicBlock PER',
   'Private live trading and hidden positions during the active window',
-  'Oracle resolution and settlement inside PER',
+  'Oracle resolution, PER settlement, and L1 claim flow',
 ];
 
 export default function DocsPage() {
@@ -62,8 +62,8 @@ export default function DocsPage() {
 
       <h2 className="mt-8 mb-4 text-2xl font-black">Current Limitation</h2>
       <p>
-        The final undelegation back from the delegation program to the prediction-market program is still being finished.
-        That means the last Solana L1 payout claim step should be treated as pending integration, even though trading and settlement already work inside PER.
+        This is a devnet prototype, not a production deployment. The remaining work is around
+        audits, operations, production oracle policy, and mainnet rollout hardening.
       </p>
 
       <h2 className="mt-8 mb-4 text-2xl font-black">Core Flow</h2>
@@ -73,7 +73,7 @@ export default function DocsPage() {
         <li>Place private YES or NO positions while the market is active.</li>
         <li>Resolve the outcome with the configured oracle.</li>
         <li>Settle the private position inside PER.</li>
-        <li>Finish L1 undelegation and payout claim once the final callback path is stable.</li>
+        <li>Claim the settled USDC from the Solana vault.</li>
       </ol>
 
       <div className="not-prose mt-10 grid gap-4 md:grid-cols-2">
