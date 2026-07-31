@@ -24,7 +24,7 @@ import {
   type PriceFeedSymbol,
 } from '@/lib/priceFeeds';
 
-const MARKET_CREATION_FEE_USDC = 0.5;
+const MARKET_CREATION_FEE_BPS = 100;
 
 interface CreateMarketModalProps {
   isOpen: boolean;
@@ -81,7 +81,9 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
 
   const totalCreateCostUsdc = useMemo(() => {
     const liquidity = Number(initialLiquidity || 0);
-    return (Number.isFinite(liquidity) ? liquidity : 0) + MARKET_CREATION_FEE_USDC;
+    const validLiquidity = Number.isFinite(liquidity) ? liquidity : 0;
+    const creationFee = (validLiquidity * MARKET_CREATION_FEE_BPS) / 10_000;
+    return { liquidity: validLiquidity, creationFee, total: validLiquidity + creationFee };
   }, [initialLiquidity]);
 
   const timeUntilResolution = useMemo(() => {
@@ -551,8 +553,8 @@ export default function CreateMarketModal({ isOpen, onClose, onSuccess }: Create
                 Uses Devnet USDC (4zMMC...ncDU). Minimum 1 USDC required.
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Public creation fee: {MARKET_CREATION_FEE_USDC.toFixed(2)} USDC. Total wallet charge:{' '}
-                {totalCreateCostUsdc.toFixed(2)} USDC.
+                Public creation fee: {(totalCreateCostUsdc.creationFee || 0).toFixed(4)} USDC (1% of liquidity).
+                Total wallet charge: {(totalCreateCostUsdc.total || 0).toFixed(4)} USDC.
               </p>
             </div>
 

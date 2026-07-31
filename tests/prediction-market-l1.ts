@@ -449,7 +449,7 @@ describe('prediction_market L1 smoke', () => {
     assert.ok(market.creator.equals(admin.publicKey));
     assert.equal(market.question, question);
     assert.equal(market.endTime.toString(), endTime.toString());
-    assert.equal(market.totalDeposited.toString(), initialLiquidity.toString());
+    assert.equal(market.totalDeposited.toString(), new anchor.BN(1_010_000).toString());
     assert.deepEqual(market.status, { active: {} });
     assert.deepEqual(market.outcome, { undetermined: {} });
   });

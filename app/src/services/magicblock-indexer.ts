@@ -55,7 +55,11 @@ const MARKET_SCAN_LIMIT = Number(process.env.MARKET_SCAN_LIMIT || 256);
 const POSITION_ACCOUNT_SIZE = 8 + 32 + 32 + 8 + 8 + 8 + 8 + 1 + 1 + 1 + 1;
 const DEFAULT_SLIPPAGE_BPS = 100;
 const BPS_DENOMINATOR = BigInt(10_000);
-const MARKET_CREATION_FEE_UNITS = BigInt(500_000);
+const MARKET_CREATION_FEE_BPS = BigInt(100);
+
+function marketCreationFeeUnits(initialLiquidity: bigint): bigint {
+  return (initialLiquidity * MARKET_CREATION_FEE_BPS) / BPS_DENOMINATOR;
+}
 const MAGICBLOCK_PRICE_FEEDS: Record<PriceFeedSymbol, PublicKey> = Object.fromEntries(
   Object.entries(PRICE_FEED_BY_SYMBOL).map(([symbol, feed]) => [
     symbol,
@@ -1164,7 +1168,7 @@ export class MagicBlockIndexer {
       collateralMint,
       creator,
       creatorCollateral,
-      params.initialLiquidity + MARKET_CREATION_FEE_UNITS
+      params.initialLiquidity + marketCreationFeeUnits(params.initialLiquidity)
     );
 
     tx.add(

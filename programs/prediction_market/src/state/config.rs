@@ -82,10 +82,21 @@ impl Config {
     /// If collateral has 6 decimals, this equals 1.000000 token.
     pub const DEFAULT_MIN_LIQUIDITY: u64 = 1_000_000;
 
-    /// Fixed fee charged on market creation to discourage spam.
+    /// Market creation fee in basis points of the initial liquidity.
     ///
-    /// If collateral has 6 decimals, this equals 0.500000 token.
-    pub const MARKET_CREATION_FEE: u64 = 500_000;
+    /// 100 bps = 1%. The fee is intentionally proportional to the liquidity
+    /// committed by the creator, so small devnet markets are not overcharged.
+    pub const MARKET_CREATION_FEE_BPS: u64 = 100;
+
+    pub fn market_creation_fee(initial_liquidity: u64) -> Result<u64> {
+        let fee = (initial_liquidity as u128)
+            .checked_mul(Self::MARKET_CREATION_FEE_BPS as u128)
+            .and_then(|value| value.checked_div(10_000))
+            .and_then(|value| u64::try_from(value).ok())
+            .ok_or(error!(ConfigError::FeeCalculationOverflow))?;
+
+        Ok(fee)
+    }
 
     pub fn assert_not_paused(&self) -> Result<()> {
         require!(!self.paused, ConfigError::ProtocolPaused);
@@ -114,6 +125,20 @@ pub enum ConfigError {
     #[msg("Protocol fee is too high")]
     FeeTooHigh,
 
+    #[msg("Market creation fee calculation overflowed")]
+    FeeCalculationOverflow,
+
     #[msg("Minimum liquidity must be greater than zero")]
     InvalidMinLiquidity,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn market_creation_fee_scales_with_liquidity() {
+        assert_eq!(Config::market_creation_fee(1_000_000).unwrap(), 10_000);
+        assert_eq!(Config::market_creation_fee(100_000_000).unwrap(), 1_000_000);
+    }
 }

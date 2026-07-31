@@ -307,7 +307,7 @@ describe('PER Prediction Market Smoke', () => {
     assert.equal(marketData.question, "Will this smoke test pass?");
     assert.equal(
       (marketData.protocolFeesAccrued as anchor.BN).toNumber(),
-      500_000,
+      10_000,
       'creation fee should accrue as aggregate protocol fees'
     );
   });
@@ -609,7 +609,7 @@ describe('PER Prediction Market Smoke', () => {
 
     const marketData = await (ephemeralProgram.account as any).market.fetch(marketPda);
     const accruedFees = (marketData.protocolFeesAccrued as anchor.BN).toNumber();
-    assert.isAbove(accruedFees, 500_000, 'private trade fee should increase aggregate protocol fees');
+    assert.isAbove(accruedFees, 10_000, 'private trade fee should increase aggregate protocol fees');
   });
 
   it('resolves market inside ER', async () => {

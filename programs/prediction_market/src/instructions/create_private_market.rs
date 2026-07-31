@@ -222,10 +222,12 @@ impl<'info> CreatePrivateMarket<'info> {
             CreatePrivateMarketError::InsufficientInitialLiquidity
         );
 
+        let creation_fee = Config::market_creation_fee(initial_liquidity)?;
+
         require!(
             self.creator_collateral.amount
                 >= initial_liquidity
-                    .checked_add(Config::MARKET_CREATION_FEE)
+                    .checked_add(creation_fee)
                     .ok_or(MarketError::ArithmeticOverflow)?,
             CreatePrivateMarketError::InsufficientCreatorCollateral
         );
@@ -233,12 +235,12 @@ impl<'info> CreatePrivateMarket<'info> {
         let market_id = self.config.market_count;
 
         let total_creator_payment = initial_liquidity
-            .checked_add(Config::MARKET_CREATION_FEE)
+            .checked_add(creation_fee)
             .ok_or(MarketError::ArithmeticOverflow)?;
 
         // Transfer real collateral from creator into the Solana L1 vault.
         //
-        // Initial liquidity remains available to the AMM. The fixed creation fee
+        // Initial liquidity remains available to the AMM. The proportional creation fee
         // stays in the vault as aggregate protocol fees for later treasury withdrawal.
         // Trading exposure will be represented privately inside MagicBlock / PER.
         transfer_checked(
@@ -281,7 +283,7 @@ impl<'info> CreatePrivateMarket<'info> {
             oracle_feed,
             resolver_price: 0,
             bump: bumps.market,
-            protocol_fees_accrued: Config::MARKET_CREATION_FEE,
+            protocol_fees_accrued: creation_fee,
         });
 
         // Initialize creator's public position shell.
@@ -329,7 +331,7 @@ impl<'info> CreatePrivateMarket<'info> {
             question,
             end_time,
             initial_liquidity,
-            creation_fee: Config::MARKET_CREATION_FEE,
+            creation_fee,
             collateral_mint: self.collateral_mint.key(),
             vault: self.vault.key(),
             oracle_kind,
