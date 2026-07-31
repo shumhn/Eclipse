@@ -48,7 +48,7 @@ delegated private state while trading is active.
 | **Crypto Price Markets** | A keeper fetches historical Pyth benchmarks for BTC, ETH, SOL, and JUP close-time settlement |
 | **Manual Markets** | A configured resolver can settle clearly defined non-price YES/NO events |
 | **Slippage Protection** | Buys enforce `min_shares_out`; sells enforce `min_collateral_out` |
-| **Protocol Revenue** | Fixed creation fees and uncertainty-weighted private trading fees accrue per market |
+| **Protocol Revenue** | Proportional creation fees and uncertainty-weighted private trading fees accrue per market |
 | **End-to-End Settlement** | Positions settle in PER, commit to Solana, and claim USDC from the market vault |
 | **Keeper Automation** | Protected crank routes advance expired price markets and eligible settlements |
 
@@ -192,7 +192,7 @@ flowchart LR
 1. **Connect a wallet** - Use a supported Solana wallet on devnet.
 2. **Define the market** - Enter the question, close time, liquidity, and
    resolution source.
-3. **Fund liquidity** - Deposit at least 1 USDC plus the fixed creation fee.
+3. **Fund liquidity** - Deposit at least 1 USDC plus a 1% creation fee based on that liquidity.
 4. **Create on Solana** - The wallet signs creation of the market, creator
    position, and vault.
 5. **Activate privacy** - The app creates permissions, delegates state, and
@@ -409,7 +409,7 @@ take a side in the outcome.
 
 | Revenue Stream | Implementation | Privacy |
 | --- | --- | --- |
-| **Market Creation Fee** | Fixed 0.50 USDC paid when a market is created | Public, because market creation is public |
+| **Market Creation Fee** | Exactly 1% of initial liquidity, with no protocol cap | Public, because market creation is public |
 | **Private Trading Fee** | Configurable taker fee on buys and sells, weighted by current uncertainty | Calculated inside TEE/PER |
 | **Treasury Withdrawal** | Admin withdraws only aggregate accrued protocol fees | No per-trade side or size is emitted |
 
@@ -433,7 +433,9 @@ admin within the on-chain cap. The market stores only the aggregate accrued fee.
 
 ### Why This Model Fits Eclipse
 
-- The fixed creation fee discourages market spam.
+- The proportional creation fee discourages spam without making small markets expensive.
+- A 1 USDC market pays 0.01 USDC; a 100 USDC market pays 1 USDC.
+- The fee scales linearly with creator-provided liquidity and has no hidden fixed surcharge.
 - Trading fees scale with actual protocol usage.
 - Fees do not depend on which side wins.
 - Private fee calculation preserves the same execution boundary as the trade.

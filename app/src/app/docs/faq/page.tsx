@@ -115,9 +115,10 @@ const faqs: FAQItem[] = [
     question: 'Are there any fees?',
     answer: (
       <p>
-        Yes. Market creation pays a fixed public 0.50 USDC fee to the protocol treasury.
-        Private AMM buys and sells also pay an uncertainty-weighted taker fee inside MagicBlock
-        TEE/PER. Individual trade side, size, shares, and per-trade fee details are not emitted;
+        Yes. Market creation pays a public fee equal to 1% of the initial liquidity to discourage
+        spam and support protocol operations. Private AMM buys and sells also pay an
+        uncertainty-weighted taker fee inside MagicBlock TEE/PER. Individual trade side, size,
+        shares, and per-trade fee details are not emitted;
         only aggregate protocol fees accrued by the market are committed.
       </p>
     ),
