@@ -145,18 +145,15 @@ export default function MarketDetailPage() {
   const direction = market?.priceMarket?.direction ?? "above";
   const priceRule = market?.priceMarket?.rule ?? "";
 
-  const baseLiquidity = market
-    ? parseInt(market.account.initial_liquidity, 16) / 1_000_000
+  const currentLiquidity = market
+    ? parseInt(market.account.market_reserves, 16) / 1_000_000
     : 0;
-  const yesMinted =
-    market
-      ? parseInt(market.account.yes_token_supply_minted, 16) / 1_000_000
-      : 0;
-  const noMinted =
-    market
-      ? parseInt(market.account.no_token_supply_minted, 16) / 1_000_000
-      : 0;
-  const totalVol = baseLiquidity + yesMinted + noMinted;
+  const liquidityDisplay = Number.isFinite(currentLiquidity)
+    ? currentLiquidity.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "--";
 
   const proofSteps = market
     ? [
@@ -278,13 +275,8 @@ export default function MarketDetailPage() {
                           {market.account.creator.slice(-4)}
                         </span>
                         <span>•</span>
-                        <span>
-                          $
-                          {totalVol.toLocaleString(undefined, {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 0,
-                          })}{" "}
-                          Vol.
+                        <span className="font-mono tabular-nums">
+                          ${liquidityDisplay} Liquidity
                         </span>
                         {positionsHidden && (
                           <>
